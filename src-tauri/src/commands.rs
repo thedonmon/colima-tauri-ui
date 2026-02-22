@@ -421,14 +421,31 @@ pub async fn get_containers(profile: String) -> Result<Vec<DockerContainer>, Str
 
 // ─── Colima AI Models ─────────────────────────────────────────────────────────
 
-/// Run `colima model setup` for a given profile (streams output as log-line events).
+/// Run `colima model setup` for a given profile.
+/// First starts a krunkit instance (required for model support), then runs setup.
+/// Streams all output as log-line events.
 #[tauri::command]
 pub async fn colima_model_setup(app: AppHandle, profile: String) -> Result<(), String> {
-    let mut args = vec!["model".to_string(), "setup".to_string()];
+    // Step 1: Start/ensure a krunkit + docker instance is running
+    let mut start_args = vec![
+        "start".to_string(),
+        "--runtime".to_string(),
+        "docker".to_string(),
+        "--vm-type".to_string(),
+        "krunkit".to_string(),
+    ];
     if profile != "default" {
-        args.extend(["--profile".to_string(), profile.clone()]);
+        start_args.extend(["--profile".to_string(), profile.clone()]);
     }
-    run_streaming(app, "colima", args, profile).await
+    // Ignore start errors — instance may already be running
+    let _ = run_streaming(app.clone(), "colima", start_args, profile.clone()).await;
+
+    // Step 2: Run model setup
+    let mut setup_args = vec!["model".to_string(), "setup".to_string()];
+    if profile != "default" {
+        setup_args.extend(["--profile".to_string(), profile.clone()]);
+    }
+    run_streaming(app, "colima", setup_args, profile).await
 }
 
 /// Run `colima model run <model>` for a given profile (streams output).

@@ -90,54 +90,62 @@ export function InstanceCard({
   return (
     <div
       className={cn(
-        "rounded-xl border border-white/[0.11] bg-white/[0.06] overflow-hidden transition-all",
-        isThisRunning && "border-blue-500/40 bg-blue-500/[0.07]"
+        "rounded-xl border overflow-hidden transition-all",
+        isThisRunning
+          ? "border-blue-500/30 bg-blue-500/[0.06]"
+          : "border-white/[0.09] bg-white/[0.05]"
       )}
     >
       {/* Card body */}
-      <div className="p-4">
+      <div className="px-4 pt-3.5 pb-3">
         {/* Header row */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="font-semibold text-[13px] text-white truncate">{instance.profile}</span>
-            <span className="text-[#777] text-[11px]">{instance.runtime}</span>
+            <span className="font-semibold text-[13px] text-[#e2e3e6] truncate">
+              {instance.profile}
+            </span>
+            <span className="text-[10.5px] text-[#555] bg-white/[0.05] rounded px-1.5 py-0.5 font-mono">
+              {instance.runtime}
+            </span>
           </div>
           <StatusBadge status={instance.status} />
         </div>
 
         {/* Specs row */}
-        <div className="flex items-center gap-4 mb-4 text-[11px] text-[#999]">
-          <span className="flex items-center gap-1.5">
-            <Cpu size={11} className="text-[#777]" />
+        <div className="flex items-center gap-3.5 mb-3.5 text-[10.5px] text-[#666]">
+          <span className="flex items-center gap-1">
+            <Cpu size={10} className="text-[#555]" />
             {instance.cpus}
           </span>
-          <span className="flex items-center gap-1.5">
-            <MemoryStick size={11} className="text-[#777]" />
+          <span className="flex items-center gap-1">
+            <MemoryStick size={10} className="text-[#555]" />
             {instance.memory}
           </span>
-          <span className="flex items-center gap-1.5">
-            <HardDrive size={11} className="text-[#777]" />
+          <span className="flex items-center gap-1">
+            <HardDrive size={10} className="text-[#555]" />
             {instance.disk}
           </span>
-          <span className="text-[#888]">{instance.arch}</span>
+          <span className="text-[#4a4b50]">{instance.arch}</span>
           {instance.address && instance.address !== "—" && (
-            <span className="text-[#777] font-mono text-[10px]">{instance.address}</span>
+            <span className="text-[#4a4b50] font-mono text-[9.5px]">{instance.address}</span>
           )}
         </div>
 
         {/* Actions */}
         {showConfirmDelete ? (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-red-400 flex-1">Delete {instance.profile}?</span>
+            <span className="text-[11px] text-red-400/80 flex-1">
+              Delete <span className="font-medium">{instance.profile}</span>?
+            </span>
             <button
               onClick={() => setShowConfirmDelete(false)}
-              className="text-[11px] px-2 py-1 rounded-md bg-white/8 text-[#999] hover:text-[#c1c2c5] transition-all"
+              className="text-[10.5px] px-2.5 py-1 rounded-lg bg-white/[0.06] text-[#777] hover:text-[#b0b1b4] transition-all"
             >
               Cancel
             </button>
             <button
               onClick={handleDelete}
-              className="text-[11px] px-2 py-1 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+              className="text-[10.5px] px-2.5 py-1 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
             >
               Delete
             </button>
@@ -146,19 +154,49 @@ export function InstanceCard({
           <div className="flex items-center gap-1.5 flex-wrap">
             {isRunning ? (
               <>
-                <ActionBtn icon={<Square size={11} />} label="Stop" onClick={handleStop} disabled={isBusy} variant="default" />
-                <ActionBtn icon={<RotateCcw size={11} />} label="Restart" onClick={handleRestart} disabled={isBusy} variant="default" />
+                <ActionBtn
+                  icon={<Square size={10} />}
+                  label="Stop"
+                  onClick={handleStop}
+                  disabled={isBusy}
+                  variant="stop"
+                />
+                <ActionBtn
+                  icon={<RotateCcw size={10} />}
+                  label="Restart"
+                  onClick={handleRestart}
+                  disabled={isBusy}
+                  variant="restart"
+                />
               </>
             ) : (
-              <ActionBtn icon={<Play size={11} />} label="Start" onClick={() => onStart(instance.profile)} disabled={isBusy} variant="primary" />
+              <ActionBtn
+                icon={<Play size={10} />}
+                label="Start"
+                onClick={() => onStart(instance.profile)}
+                disabled={isBusy}
+                variant="start"
+              />
             )}
-            <ActionBtn icon={<FileText size={11} />} label="Config" onClick={() => onViewConfig(instance.profile)} disabled={false} variant="default" />
+            <ActionBtn
+              icon={<FileText size={10} />}
+              label="Config"
+              onClick={() => onViewConfig(instance.profile)}
+              disabled={false}
+              variant="default"
+            />
             {isRunning && (
-              <ActionBtn icon={<Scissors size={11} />} label="Prune" onClick={handlePrune} disabled={isBusy} variant="default" />
+              <ActionBtn
+                icon={<Scissors size={10} />}
+                label="Prune"
+                onClick={handlePrune}
+                disabled={isBusy}
+                variant="warn"
+              />
             )}
             <div className="flex-1" />
             <ActionBtn
-              icon={<Trash2 size={11} />}
+              icon={<Trash2 size={10} />}
               label=""
               onClick={() => setShowConfirmDelete(true)}
               disabled={isBusy || isRunning}
@@ -169,7 +207,7 @@ export function InstanceCard({
         )}
 
         {isThisRunning && (
-          <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-blue-400">
+          <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-blue-400/80">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
             Running command…
           </div>
@@ -178,16 +216,16 @@ export function InstanceCard({
 
       {/* Containers accordion */}
       {isRunning && (
-        <div className="border-t border-white/[0.07]">
+        <div className="border-t border-white/[0.06]">
           <button
             onClick={() => setShowContainers((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-2.5 text-[11px] text-[#888] hover:text-[#bbb] hover:bg-white/5 transition-all"
+            className="w-full flex items-center justify-between px-4 py-2 text-[10.5px] text-[#666] hover:text-[#999] hover:bg-white/[0.03] transition-all"
           >
-            <span className="flex items-center gap-2">
-              {showContainers ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-              Containers
-              {containers.length > 0 && !showContainers && (
-                <span className="rounded-full bg-white/10 px-1.5 py-px text-[10px] text-[#888]">
+            <span className="flex items-center gap-1.5">
+              {showContainers ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              <span>Containers</span>
+              {containers.length > 0 && (
+                <span className="rounded-full bg-white/[0.08] px-1.5 py-px text-[9.5px] text-[#666]">
                   {containers.length}
                 </span>
               )}
@@ -195,11 +233,11 @@ export function InstanceCard({
           </button>
 
           {showContainers && (
-            <div className="px-4 pb-4 space-y-3">
+            <div className="px-4 pb-3.5 space-y-3">
               {containersLoading ? (
-                <p className="text-[11px] text-[#666]">Loading…</p>
+                <p className="text-[10.5px] text-[#555]">Loading…</p>
               ) : containers.length === 0 ? (
-                <p className="text-[11px] text-[#666] italic">No running containers</p>
+                <p className="text-[10.5px] text-[#444] italic">No running containers</p>
               ) : (
                 containers.map((c) => (
                   <ContainerRow
@@ -219,12 +257,14 @@ export function InstanceCard({
   );
 }
 
+type ActionVariant = "start" | "stop" | "restart" | "warn" | "default" | "danger";
+
 interface ActionBtnProps {
   icon: ReactNode;
   label: string;
   onClick: () => void;
   disabled: boolean;
-  variant: "primary" | "default" | "danger";
+  variant: ActionVariant;
   title?: string;
 }
 
@@ -235,11 +275,14 @@ function ActionBtn({ icon, label, onClick, disabled, variant, title }: ActionBtn
       disabled={disabled}
       title={title}
       className={cn(
-        "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all",
-        "disabled:opacity-40 disabled:cursor-not-allowed",
-        variant === "primary" && "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30",
-        variant === "default" && "bg-white/8 text-[#aaaaad] hover:bg-white/12 hover:text-[#c1c2c5]",
-        variant === "danger" && "bg-transparent text-[#888] hover:bg-red-500/15 hover:text-red-400"
+        "flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10.5px] font-medium transition-all",
+        "disabled:opacity-35 disabled:cursor-not-allowed",
+        variant === "start" && "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25",
+        variant === "stop" && "bg-red-500/15 text-red-400 hover:bg-red-500/25",
+        variant === "restart" && "bg-blue-500/15 text-blue-400 hover:bg-blue-500/25",
+        variant === "warn" && "bg-amber-500/12 text-amber-400 hover:bg-amber-500/20",
+        variant === "default" && "bg-white/[0.06] text-[#888] hover:bg-white/[0.1] hover:text-[#b0b1b4]",
+        variant === "danger" && "bg-transparent text-[#555] hover:bg-red-500/15 hover:text-red-400"
       )}
     >
       {icon}

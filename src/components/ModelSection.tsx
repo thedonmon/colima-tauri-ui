@@ -20,11 +20,16 @@ const REGISTRY_PREFIXES = [
 
 const EXAMPLE_MODELS = ["gemma3", "hf://tinyllama", "ollama://tinyllama", "hf://phi-2"];
 
-export function ModelSection() {
+interface ModelSectionProps {
+  defaultOpen?: boolean;
+  onViewLogs?: () => void;
+}
+
+export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}) {
   const { instances } = useColimaStore();
   const runningInstances = instances.filter((i) => i.status.toLowerCase() === "running");
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen ?? false);
   const [selectedProfile, setSelectedProfile] = useState<string>("default");
   const [modelInput, setModelInput] = useState("");
   const [vmType, setVmType] = useState<Record<string, string>>({});
@@ -54,6 +59,7 @@ export function ModelSection() {
   const isKrunkit = vmType[selectedProfile] === "krunkit";
 
   const handleSetup = async () => {
+    onViewLogs?.();
     setBusy("setup");
     setError(null);
     try {
@@ -68,6 +74,7 @@ export function ModelSection() {
   const handleRun = async () => {
     const model = modelInput.trim();
     if (!model) return;
+    onViewLogs?.();
     setBusy("run");
     setError(null);
     try {
@@ -104,8 +111,9 @@ export function ModelSection() {
           <div className="flex items-start gap-2 rounded-lg bg-purple-500/8 border border-purple-500/15 px-3 py-2.5">
             <AlertTriangle size={11} className="text-purple-400/80 mt-0.5 flex-shrink-0" />
             <p className="text-[10.5px] text-purple-300/70 leading-relaxed">
-              Requires Apple Silicon + macOS 13+. Start Colima with{" "}
-              <span className="font-mono text-purple-300/90">--vm-type krunkit</span> to enable GPU acceleration.
+              Requires Apple Silicon + macOS 13+. "Setup" will start a{" "}
+              <span className="font-mono text-purple-300/90">krunkit</span> instance then run{" "}
+              <span className="font-mono text-purple-300/90">colima model setup</span> automatically.
             </p>
           </div>
 

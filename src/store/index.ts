@@ -9,7 +9,8 @@ interface ColimaStore {
   logs: LogLine[];
   isLoading: boolean;
   isRunningCommand: boolean;
-  activeProfile: string | null; // profile currently running a command
+  activeProfile: string | null;
+  colimaInstalled: boolean | null; // null = not yet checked
 
   fetchInstances: () => Promise<void>;
   fetchVersion: () => Promise<void>;
@@ -21,6 +22,11 @@ interface ColimaStore {
   pruneInstance: (profile: string) => Promise<void>;
   addLog: (log: LogLine) => void;
   clearLogs: () => void;
+}
+
+function isNotFound(err: unknown): boolean {
+  const msg = String(err).toLowerCase();
+  return msg.includes("colima not found") || msg.includes("no such file") || msg.includes("os error 2");
 }
 
 async function runCommand<T>(
@@ -47,15 +53,20 @@ export const useColimaStore = create<ColimaStore>((set, get) => ({
   isLoading: false,
   isRunningCommand: false,
   activeProfile: null,
+  colimaInstalled: null,
 
   fetchInstances: async () => {
     set({ isLoading: true });
     try {
       const instances = await invoke<ColimaInstance[]>("list_instances");
-      set({ instances });
+      set({ instances, colimaInstalled: true });
     } catch (err) {
-      console.error("list_instances failed:", err);
-      set({ instances: [] });
+      if (isNotFound(err)) {
+        set({ instances: [], colimaInstalled: false });
+      } else {
+        set({ instances: [], colimaInstalled: true });
+        console.error("list_instances failed:", err);
+      }
     } finally {
       set({ isLoading: false });
     }
@@ -64,8 +75,10 @@ export const useColimaStore = create<ColimaStore>((set, get) => ({
   fetchVersion: async () => {
     try {
       const version = await invoke<string>("get_version");
-      set({ version });
-    } catch {}
+      set({ version, colimaInstalled: true });
+    } catch (e) {
+      if (isNotFound(e)) set({ colimaInstalled: false });
+    }
   },
 
   fetchDockerContexts: async () => {

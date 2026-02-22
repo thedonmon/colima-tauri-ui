@@ -7,15 +7,16 @@ import type { DockerContainer, ContainerLogsTarget } from "../types";
 
 interface DockerDesktopSectionProps {
   onContainerLogsOpen: (target: ContainerLogsTarget) => void;
+  defaultOpen?: boolean;
 }
 
 /**
  * Shows containers running in non-Colima Docker contexts (e.g. Docker Desktop).
  * Only renders if a "desktop-linux" or similar non-colima context is found.
  */
-export function DockerDesktopSection({ onContainerLogsOpen }: DockerDesktopSectionProps) {
+export function DockerDesktopSection({ onContainerLogsOpen, defaultOpen }: DockerDesktopSectionProps) {
   const { dockerContexts } = useColimaStore();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen ?? false);
   const [containers, setContainers] = useState<DockerContainer[]>([]);
   const [loading, setLoading] = useState(false);
 
