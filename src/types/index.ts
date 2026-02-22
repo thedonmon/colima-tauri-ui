@@ -49,3 +49,17 @@ export interface ContainerLogsTarget {
   context: string; // docker context name, e.g. "colima", "colima-dev"
 }
 
+export interface DockerImage {
+  id: string;
+  repository: string;
+  tag: string;
+  size: string;
+  created_since: string;
+}
+
+export interface DockerVolume {
+  name: string;
+  driver: string;
+  mountpoint: string;
+}
+

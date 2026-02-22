@@ -27,11 +27,13 @@ export function ConfigViewer({ profile, onClose }: ConfigViewerProps) {
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col bg-[#13141a] rounded-2xl">
+      {/* Traffic-light clearance */}
+      <div className="h-8 flex-shrink-0" data-tauri-drag-region />
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
         <div>
           <p className="text-[12px] font-semibold text-[#e0e0e0]">colima.yaml</p>
-          <p className="text-[10px] text-[#555]">~/.colima/{profile}/colima.yaml</p>
+          <p className="text-[10px] text-[#777]">~/.colima/{profile}/colima.yaml</p>
         </div>
         <div className="flex items-center gap-2">
           {config && (

@@ -61,7 +61,7 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
           <p className="text-[10.5px] font-medium text-[#d0d1d4] truncate leading-snug">
             {container.names || "—"}
           </p>
-          <p className="text-[9.5px] text-[#555] truncate mb-1.5">{container.image || "—"}</p>
+          <p className="text-[9.5px] text-[#777] truncate mb-1.5">{container.image || "—"}</p>
 
           {/* Action buttons */}
           <div className="flex items-center gap-1 flex-wrap">

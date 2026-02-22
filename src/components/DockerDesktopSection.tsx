@@ -68,7 +68,7 @@ export function DockerDesktopSection({ onContainerLogsOpen, defaultOpen }: Docke
       {open && (
         <div className="px-4 pb-4 border-t border-white/6">
           {loading ? (
-            <p className="text-[11px] text-[#444] pt-3">Loading…</p>
+            <p className="text-[11px] text-[#666] pt-3">Loading…</p>
           ) : containers.length === 0 ? (
             <p className="text-[11px] text-[#3a3a3a] pt-3 italic">No running containers</p>
           ) : (

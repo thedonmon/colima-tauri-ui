@@ -16,8 +16,10 @@ import {
 import { useColimaStore } from "../store";
 import { StatusBadge } from "./StatusBadge";
 import { ContainerRow } from "./ContainerRow";
+import { ImageRow } from "./ImageRow";
+import { VolumeRow } from "./VolumeRow";
 import { cn } from "../lib/utils";
-import type { ColimaInstance, DockerContainer, ContainerLogsTarget } from "../types";
+import type { ColimaInstance, DockerContainer, DockerImage, DockerVolume, ContainerLogsTarget } from "../types";
 
 interface InstanceCardProps {
   instance: ColimaInstance;
@@ -41,6 +43,14 @@ export function InstanceCard({
   const [showContainers, setShowContainers] = useState(false);
   const [containers, setContainers] = useState<DockerContainer[]>([]);
   const [containersLoading, setContainersLoading] = useState(false);
+  const [showImages, setShowImages] = useState(false);
+  const [images, setImages] = useState<DockerImage[]>([]);
+  const [imagesLoading, setImagesLoading] = useState(false);
+  const [pruningImages, setPruningImages] = useState(false);
+  const [showVolumes, setShowVolumes] = useState(false);
+  const [volumes, setVolumes] = useState<DockerVolume[]>([]);
+  const [volumesLoading, setVolumesLoading] = useState(false);
+  const [pruningVolumes, setPruningVolumes] = useState(false);
 
   const isRunning = instance.status.toLowerCase() === "running";
   const isThisRunning = isRunningCommand && activeProfile === instance.profile;
@@ -58,9 +68,55 @@ export function InstanceCard({
       .finally(() => setContainersLoading(false));
   };
 
+  const fetchImages = () => {
+    if (!isRunning) return;
+    setImagesLoading(true);
+    invoke<DockerImage[]>("get_images", { profile: instance.profile })
+      .then((imgs) => setImages(imgs))
+      .catch(() => setImages([]))
+      .finally(() => setImagesLoading(false));
+  };
+
+  const fetchVolumes = () => {
+    if (!isRunning) return;
+    setVolumesLoading(true);
+    invoke<DockerVolume[]>("get_volumes", { profile: instance.profile })
+      .then((vols) => setVolumes(vols))
+      .catch(() => setVolumes([]))
+      .finally(() => setVolumesLoading(false));
+  };
+
   useEffect(() => {
     if (showContainers && isRunning) fetchContainers();
   }, [showContainers, isRunning]);
+
+  useEffect(() => {
+    if (showImages && isRunning) fetchImages();
+  }, [showImages, isRunning]);
+
+  useEffect(() => {
+    if (showVolumes && isRunning) fetchVolumes();
+  }, [showVolumes, isRunning]);
+
+  const handlePruneImages = async () => {
+    setPruningImages(true);
+    try {
+      await invoke("prune_images", { profile: instance.profile });
+      fetchImages();
+    } finally {
+      setPruningImages(false);
+    }
+  };
+
+  const handlePruneVolumes = async () => {
+    setPruningVolumes(true);
+    try {
+      await invoke("prune_volumes", { profile: instance.profile });
+      fetchVolumes();
+    } finally {
+      setPruningVolumes(false);
+    }
+  };
 
   useEffect(() => {
     if (!isThisRunning && showContainers && isRunning) fetchContainers();
@@ -104,7 +160,7 @@ export function InstanceCard({
             <span className="font-semibold text-[13px] text-[#e2e3e6] truncate">
               {instance.profile}
             </span>
-            <span className="text-[10.5px] text-[#555] bg-white/[0.05] rounded px-1.5 py-0.5 font-mono">
+            <span className="text-[10.5px] text-[#777] bg-white/[0.05] rounded px-1.5 py-0.5 font-mono">
               {instance.runtime}
             </span>
           </div>
@@ -114,20 +170,20 @@ export function InstanceCard({
         {/* Specs row */}
         <div className="flex items-center gap-3.5 mb-3.5 text-[10.5px] text-[#666]">
           <span className="flex items-center gap-1">
-            <Cpu size={10} className="text-[#555]" />
+            <Cpu size={10} className="text-[#5a5b60]" />
             {instance.cpus}
           </span>
           <span className="flex items-center gap-1">
-            <MemoryStick size={10} className="text-[#555]" />
+            <MemoryStick size={10} className="text-[#5a5b60]" />
             {instance.memory}
           </span>
           <span className="flex items-center gap-1">
-            <HardDrive size={10} className="text-[#555]" />
+            <HardDrive size={10} className="text-[#5a5b60]" />
             {instance.disk}
           </span>
-          <span className="text-[#4a4b50]">{instance.arch}</span>
+          <span className="text-[#666]">{instance.arch}</span>
           {instance.address && instance.address !== "—" && (
-            <span className="text-[#4a4b50] font-mono text-[9.5px]">{instance.address}</span>
+            <span className="text-[#666] font-mono text-[9.5px]">{instance.address}</span>
           )}
         </div>
 
@@ -214,8 +270,9 @@ export function InstanceCard({
         )}
       </div>
 
-      {/* Containers accordion */}
+      {/* Containers / Images / Volumes accordions */}
       {isRunning && (
+        <>
         <div className="border-t border-white/[0.06]">
           <button
             onClick={() => setShowContainers((v) => !v)}
@@ -237,7 +294,7 @@ export function InstanceCard({
               {containersLoading ? (
                 <p className="text-[10.5px] text-[#555]">Loading…</p>
               ) : containers.length === 0 ? (
-                <p className="text-[10.5px] text-[#444] italic">No running containers</p>
+                <p className="text-[10.5px] text-[#666] italic">No running containers</p>
               ) : (
                 containers.map((c) => (
                   <ContainerRow
@@ -252,6 +309,101 @@ export function InstanceCard({
             </div>
           )}
         </div>
+
+        {/* Images accordion */}
+        <div className="border-t border-white/[0.06]">
+          <div className="flex items-center px-4 py-2">
+            <button
+              onClick={() => setShowImages((v) => !v)}
+              className="flex items-center gap-1.5 text-[10.5px] text-[#666] hover:text-[#999] transition-all flex-1"
+            >
+              {showImages ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              <span>Images</span>
+              {images.length > 0 && (
+                <span className="rounded-full bg-white/[0.08] px-1.5 py-px text-[9.5px] text-[#666]">
+                  {images.length}
+                </span>
+              )}
+            </button>
+            {showImages && images.some((i) => i.repository === "<none>" || i.tag === "<none>") && (
+              <button
+                onClick={handlePruneImages}
+                disabled={pruningImages}
+                className="text-[9.5px] text-amber-400/70 hover:text-amber-400 transition-all disabled:opacity-40"
+                title="Remove dangling images"
+              >
+                {pruningImages ? "Pruning…" : "Prune dangling"}
+              </button>
+            )}
+          </div>
+
+          {showImages && (
+            <div className="px-4 pb-3.5 space-y-2.5">
+              {imagesLoading ? (
+                <p className="text-[10.5px] text-[#555]">Loading…</p>
+              ) : images.length === 0 ? (
+                <p className="text-[10.5px] text-[#666] italic">No images</p>
+              ) : (
+                images.map((img) => (
+                  <ImageRow
+                    key={img.id}
+                    image={img}
+                    profile={instance.profile}
+                    onRefresh={fetchImages}
+                  />
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Volumes accordion */}
+        <div className="border-t border-white/[0.06]">
+          <div className="flex items-center px-4 py-2">
+            <button
+              onClick={() => setShowVolumes((v) => !v)}
+              className="flex items-center gap-1.5 text-[10.5px] text-[#666] hover:text-[#999] transition-all flex-1"
+            >
+              {showVolumes ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              <span>Volumes</span>
+              {volumes.length > 0 && (
+                <span className="rounded-full bg-white/[0.08] px-1.5 py-px text-[9.5px] text-[#666]">
+                  {volumes.length}
+                </span>
+              )}
+            </button>
+            {showVolumes && volumes.length > 0 && (
+              <button
+                onClick={handlePruneVolumes}
+                disabled={pruningVolumes}
+                className="text-[9.5px] text-amber-400/70 hover:text-amber-400 transition-all disabled:opacity-40"
+                title="Remove volumes not used by any container"
+              >
+                {pruningVolumes ? "Pruning…" : "Prune unused"}
+              </button>
+            )}
+          </div>
+
+          {showVolumes && (
+            <div className="px-4 pb-3.5 space-y-2.5">
+              {volumesLoading ? (
+                <p className="text-[10.5px] text-[#555]">Loading…</p>
+              ) : volumes.length === 0 ? (
+                <p className="text-[10.5px] text-[#666] italic">No volumes</p>
+              ) : (
+                volumes.map((vol) => (
+                  <VolumeRow
+                    key={vol.name}
+                    volume={vol}
+                    profile={instance.profile}
+                    onRefresh={fetchVolumes}
+                  />
+                ))
+              )}
+            </div>
+          )}
+        </div>
+        </>
       )}
     </div>
   );

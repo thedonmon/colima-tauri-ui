@@ -405,18 +405,179 @@ async fn fetch_containers(context: &str) -> Result<Vec<DockerContainer>, String>
     Ok(containers)
 }
 
-/// Returns Docker containers running inside a Colima instance.
-/// Colima exposes each profile as a Docker context:
+/// Maps a Colima profile name to its Docker context name.
 ///   default profile → "colima"
 ///   named profile   → "colima-<profile>"
-#[tauri::command]
-pub async fn get_containers(profile: String) -> Result<Vec<DockerContainer>, String> {
-    let context = if profile == "default" {
+fn profile_to_context(profile: &str) -> String {
+    if profile == "default" {
         "colima".to_string()
     } else {
         format!("colima-{}", profile)
-    };
-    fetch_containers(&context).await
+    }
+}
+
+/// Returns Docker containers running inside a Colima instance.
+#[tauri::command]
+pub async fn get_containers(profile: String) -> Result<Vec<DockerContainer>, String> {
+    fetch_containers(&profile_to_context(&profile)).await
+}
+
+// ─── Images ───────────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DockerImage {
+    #[serde(rename(deserialize = "ID"), default)]
+    pub id: String,
+    #[serde(rename(deserialize = "Repository"), default)]
+    pub repository: String,
+    #[serde(rename(deserialize = "Tag"), default)]
+    pub tag: String,
+    #[serde(rename(deserialize = "Size"), default)]
+    pub size: String,
+    #[serde(rename(deserialize = "CreatedSince"), default)]
+    pub created_since: String,
+}
+
+/// List images in a Colima instance's Docker context.
+#[tauri::command]
+pub async fn get_images(profile: String) -> Result<Vec<DockerImage>, String> {
+    let context = profile_to_context(&profile);
+    let out = cmd("docker")
+        .args(["--context", &context, "images", "--format", "{{json .}}"])
+        .output()
+        .await
+        .map_err(|e| format!("docker not found: {}", e))?;
+
+    if !out.status.success() {
+        return Ok(vec![]);
+    }
+
+    let mut images = Vec::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(img) = serde_json::from_str::<DockerImage>(line) {
+            images.push(img);
+        }
+    }
+    Ok(images)
+}
+
+/// Prune dangling images (untagged, not referenced by any container) — safe to run anytime.
+#[tauri::command]
+pub async fn prune_images(profile: String) -> Result<String, String> {
+    let context = profile_to_context(&profile);
+    let out = cmd("docker")
+        .args(["--context", &context, "image", "prune", "--force"])
+        .output()
+        .await
+        .map_err(|e| format!("docker not found: {}", e))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(stderr);
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Remove an image by ID from a Colima instance's Docker context.
+#[tauri::command]
+pub async fn remove_image(profile: String, image_id: String) -> Result<(), String> {
+    let context = profile_to_context(&profile);
+    let out = cmd("docker")
+        .args(["--context", &context, "rmi", &image_id])
+        .output()
+        .await
+        .map_err(|e| format!("docker not found: {}", e))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("`docker rmi` failed (status {})", out.status.code().unwrap_or(-1))
+        } else {
+            stderr
+        });
+    }
+    Ok(())
+}
+
+// ─── Volumes ──────────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DockerVolume {
+    #[serde(rename(deserialize = "Name"), default)]
+    pub name: String,
+    #[serde(rename(deserialize = "Driver"), default)]
+    pub driver: String,
+    #[serde(rename(deserialize = "Mountpoint"), default)]
+    pub mountpoint: String,
+}
+
+/// List volumes in a Colima instance's Docker context.
+#[tauri::command]
+pub async fn get_volumes(profile: String) -> Result<Vec<DockerVolume>, String> {
+    let context = profile_to_context(&profile);
+    let out = cmd("docker")
+        .args(["--context", &context, "volume", "ls", "--format", "{{json .}}"])
+        .output()
+        .await
+        .map_err(|e| format!("docker not found: {}", e))?;
+
+    if !out.status.success() {
+        return Ok(vec![]);
+    }
+
+    let mut volumes = Vec::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(vol) = serde_json::from_str::<DockerVolume>(line) {
+            volumes.push(vol);
+        }
+    }
+    Ok(volumes)
+}
+
+/// Prune volumes not referenced by any container — safe to run when containers are stopped.
+#[tauri::command]
+pub async fn prune_volumes(profile: String) -> Result<String, String> {
+    let context = profile_to_context(&profile);
+    let out = cmd("docker")
+        .args(["--context", &context, "volume", "prune", "--force"])
+        .output()
+        .await
+        .map_err(|e| format!("docker not found: {}", e))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(stderr);
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Remove a named volume from a Colima instance's Docker context.
+#[tauri::command]
+pub async fn remove_volume(profile: String, volume_name: String) -> Result<(), String> {
+    let context = profile_to_context(&profile);
+    let out = cmd("docker")
+        .args(["--context", &context, "volume", "rm", &volume_name])
+        .output()
+        .await
+        .map_err(|e| format!("docker not found: {}", e))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("`docker volume rm` failed (status {})", out.status.code().unwrap_or(-1))
+        } else {
+            stderr
+        });
+    }
+    Ok(())
 }
 
 // ─── Colima AI Models ─────────────────────────────────────────────────────────

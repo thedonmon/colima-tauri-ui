@@ -40,7 +40,7 @@ export function SetupGuide() {
       {/* Header */}
       <div className="space-y-1">
         <p className="text-[13px] font-semibold text-[#d0d1d4]">Get started with Colima</p>
-        <p className="text-[10.5px] text-[#555] leading-relaxed">
+        <p className="text-[10.5px] text-[#888] leading-relaxed">
           Colima wasn't found on your system. Run the commands below in Terminal, then relaunch
           this app.
         </p>
@@ -55,15 +55,15 @@ export function SetupGuide() {
       {/* Step 2: Basic usage */}
       <Step num={2} icon={<Terminal size={11} />} title="Start your first VM">
         <CodeLine>colima start</CodeLine>
-        <p className="text-[9.5px] text-[#444] leading-relaxed">
+        <p className="text-[9.5px] text-[#777] leading-relaxed">
           Or with custom resources:{" "}
-          <span className="font-mono text-[#555]">colima start --cpu 4 --memory 8</span>
+          <span className="font-mono text-[#666]">colima start --cpu 4 --memory 8</span>
         </p>
       </Step>
 
       {/* Step 3: krunkit for AI */}
       <Step num={3} icon={<Cpu size={11} />} title="Optional: krunkit for AI models">
-        <p className="text-[9.5px] text-[#444] leading-relaxed mb-1">
+        <p className="text-[9.5px] text-[#777] leading-relaxed mb-1">
           Required for GPU-accelerated AI models (Apple Silicon only):
         </p>
         <CodeLine>brew tap slp/krunkit</CodeLine>

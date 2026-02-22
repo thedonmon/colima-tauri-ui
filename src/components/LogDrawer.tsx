@@ -30,7 +30,7 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
         </div>
         <button
           onClick={onClose}
-          className="text-[#444] hover:text-[#666] transition-colors"
+          className="text-[#555] hover:text-[#777] transition-colors"
         >
           <ChevronDown size={14} />
         </button>
@@ -39,7 +39,7 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
       {/* Log lines */}
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5 font-mono text-[11px]">
         {logs.length === 0 ? (
-          <span className="text-[#444]">Waiting for output…</span>
+          <span className="text-[#666]">Waiting for output…</span>
         ) : (
           logs.map((log, i) => (
             <div

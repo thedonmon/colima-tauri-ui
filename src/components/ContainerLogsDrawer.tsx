@@ -64,7 +64,7 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
           <p className="text-[11px] font-semibold text-[#e0e0e0] truncate">
             {target.container.names || target.container.id}
           </p>
-          <p className="text-[10px] text-[#444] truncate">{target.container.image}</p>
+          <p className="text-[10px] text-[#666] truncate">{target.container.image}</p>
         </div>
         <button
           onClick={fetchLogs}
@@ -88,7 +88,7 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
         {error ? (
           <p className="px-4 pt-2 text-[10.5px] font-mono text-red-400">{error}</p>
         ) : loading && !logUrl ? (
-          <p className="px-4 pt-2 text-[10.5px] font-mono text-[#444]">Loading…</p>
+          <p className="px-4 pt-2 text-[10.5px] font-mono text-[#666]">Loading…</p>
         ) : logUrl ? (
           <LazyLog
             key={key}
@@ -101,7 +101,7 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
             lineClassName="text-[#909296] font-mono"
           />
         ) : (
-          <p className="px-4 pt-2 text-[10.5px] font-mono text-[#444] italic">No log output found</p>
+          <p className="px-4 pt-2 text-[10.5px] font-mono text-[#666] italic">No log output found</p>
         )}
       </div>
     </div>

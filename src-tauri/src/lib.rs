@@ -28,6 +28,12 @@ pub fn run() {
             commands::colima_model_setup,
             commands::colima_model_run,
             commands::get_vm_type,
+            commands::get_images,
+            commands::remove_image,
+            commands::prune_images,
+            commands::get_volumes,
+            commands::remove_volume,
+            commands::prune_volumes,
         ])
         .setup(|app| {
             // Hide dock icon — this app lives in the menu bar only

@@ -205,8 +205,8 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
                 <span className="text-[9.5px] font-mono text-purple-400/70 w-20 flex-shrink-0">
                   {r.value || "bare"}
                 </span>
-                <span className="text-[9.5px] text-[#555]">{r.label}</span>
-                <span className="text-[9.5px] font-mono text-[#444] ml-auto">{r.example}</span>
+                <span className="text-[9.5px] text-[#777]">{r.label}</span>
+                <span className="text-[9.5px] font-mono text-[#666] ml-auto">{r.example}</span>
               </div>
             ))}
           </div>
