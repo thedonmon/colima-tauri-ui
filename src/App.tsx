@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Plus } from "lucide-react";
 
@@ -15,7 +16,7 @@ import { ContainerLogsDrawer } from "./components/ContainerLogsDrawer";
 import { DockerDesktopSection } from "./components/DockerDesktopSection";
 import { ModelSection } from "./components/ModelSection";
 import { SetupGuide } from "./components/SetupGuide";
-import type { LogLine, ContainerLogsTarget } from "./types";
+import type { ColimaInstance, DockerEvent, LogLine, ContainerLogsTarget } from "./types";
 
 import "./index.css";
 
@@ -26,9 +27,11 @@ export default function App() {
     isRunningCommand,
     colimaInstalled,
     fetchInstances,
+    setInstances,
     fetchVersion,
     fetchDockerContexts,
     addLog,
+    bumpDockerTick,
     dockerContexts,
   } = useColimaStore();
 
@@ -46,10 +49,50 @@ export default function App() {
   useEffect(() => { configProfileRef.current = configProfile; }, [configProfile]);
   useEffect(() => { containerLogsRef.current = containerLogsTarget; }, [containerLogsTarget]);
 
+  // Track which profiles currently have an active docker-events watcher
+  const watchingProfiles = useRef(new Set<string>());
+
+  const syncWatchers = useCallback(async (currentInstances: ColimaInstance[]) => {
+    const runningNow = new Set(
+      currentInstances
+        .filter((i) => i.status.toLowerCase() === "running")
+        .map((i) => i.profile)
+    );
+    // Stop watchers for instances that are no longer running
+    for (const profile of [...watchingProfiles.current]) {
+      if (!runningNow.has(profile)) {
+        invoke("stop_docker_watcher", { profile }).catch(() => {});
+        watchingProfiles.current.delete(profile);
+      }
+    }
+    // Start watchers for newly running instances
+    for (const profile of runningNow) {
+      if (!watchingProfiles.current.has(profile)) {
+        invoke("start_docker_watcher", { profile }).catch(() => {});
+        watchingProfiles.current.add(profile);
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    fetchInstances();
+    // Initial load
+    fetchInstances().then(() => syncWatchers(useColimaStore.getState().instances));
     fetchVersion();
     fetchDockerContexts();
+
+    // Start the Colima status poller (replaces 20-second JS setInterval)
+    invoke("start_colima_poller").catch(() => {});
+
+    // Colima VM list changed → update store + sync watchers
+    const unlistenColima = listen<ColimaInstance[]>("colima-status-changed", (e) => {
+      setInstances(e.payload);
+      syncWatchers(e.payload);
+    });
+
+    // Docker daemon event → bump the per-profile tick so open sections auto-refresh
+    const unlistenDocker = listen<DockerEvent>("docker-event", (e) => {
+      bumpDockerTick(e.payload.profile);
+    });
 
     const unlistenLog = listen<LogLine>("log-line", (e) => addLog(e.payload));
 
@@ -65,12 +108,16 @@ export default function App() {
       }
     });
 
-    const interval = setInterval(fetchInstances, 20_000);
-
     return () => {
+      unlistenColima.then((f) => f());
+      unlistenDocker.then((f) => f());
       unlistenLog.then((f) => f());
       unlistenFocus.then((f) => f());
-      clearInterval(interval);
+      // Clean up all active watchers
+      for (const profile of watchingProfiles.current) {
+        invoke("stop_docker_watcher", { profile }).catch(() => {});
+      }
+      invoke("stop_docker_watcher", { profile: "__poller__" }).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

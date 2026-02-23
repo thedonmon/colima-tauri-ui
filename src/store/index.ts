@@ -11,8 +11,10 @@ interface ColimaStore {
   isRunningCommand: boolean;
   activeProfile: string | null;
   colimaInstalled: boolean | null; // null = not yet checked
+  dockerRefreshTick: Record<string, number>; // per-profile tick bumped on docker events
 
   fetchInstances: () => Promise<void>;
+  setInstances: (instances: ColimaInstance[]) => void;
   fetchVersion: () => Promise<void>;
   fetchDockerContexts: () => Promise<void>;
   startInstance: (options: StartOptions) => Promise<void>;
@@ -22,6 +24,7 @@ interface ColimaStore {
   pruneInstance: (profile: string) => Promise<void>;
   addLog: (log: LogLine) => void;
   clearLogs: () => void;
+  bumpDockerTick: (profile: string) => void;
 }
 
 function isNotFound(err: unknown): boolean {
@@ -54,6 +57,7 @@ export const useColimaStore = create<ColimaStore>((set, get) => ({
   isRunningCommand: false,
   activeProfile: null,
   colimaInstalled: null,
+  dockerRefreshTick: {},
 
   fetchInstances: async () => {
     set({ isLoading: true });
@@ -71,6 +75,10 @@ export const useColimaStore = create<ColimaStore>((set, get) => ({
       set({ isLoading: false });
     }
   },
+
+  // Directly set instances (used by the colima-status-changed event).
+  // Poller only fires when colima is running, so it's always installed.
+  setInstances: (instances) => set({ instances, colimaInstalled: true }),
 
   fetchVersion: async () => {
     try {
@@ -122,4 +130,12 @@ export const useColimaStore = create<ColimaStore>((set, get) => ({
     set((state) => ({ logs: [...state.logs.slice(-500), log] })),
 
   clearLogs: () => set({ logs: [] }),
+
+  bumpDockerTick: (profile) =>
+    set((state) => ({
+      dockerRefreshTick: {
+        ...state.dockerRefreshTick,
+        [profile]: (state.dockerRefreshTick[profile] ?? 0) + 1,
+      },
+    })),
 }));

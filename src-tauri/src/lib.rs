@@ -9,6 +9,7 @@ use tauri::{
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(commands::WatcherState::default())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -34,6 +35,11 @@ pub fn run() {
             commands::get_volumes,
             commands::remove_volume,
             commands::prune_volumes,
+            commands::start_docker_watcher,
+            commands::stop_docker_watcher,
+            commands::stream_container_logs,
+            commands::stop_container_log_stream,
+            commands::start_colima_poller,
         ])
         .setup(|app| {
             // Hide dock icon — this app lives in the menu bar only

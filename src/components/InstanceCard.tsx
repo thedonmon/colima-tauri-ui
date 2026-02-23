@@ -36,8 +36,9 @@ export function InstanceCard({
   onViewLogs,
   onContainerLogsOpen,
 }: InstanceCardProps) {
-  const { stopInstance, restartInstance, deleteInstance, pruneInstance, isRunningCommand, activeProfile } =
+  const { stopInstance, restartInstance, deleteInstance, pruneInstance, isRunningCommand, activeProfile, dockerRefreshTick } =
     useColimaStore();
+  const tick = dockerRefreshTick[instance.profile] ?? 0;
 
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [showContainers, setShowContainers] = useState(false);
@@ -59,11 +60,12 @@ export function InstanceCard({
   const dockerContext =
     instance.profile === "default" ? "colima" : `colima-${instance.profile}`;
 
+  // Initial open: shows loading indicator when there's no data yet
   const fetchContainers = () => {
     if (!isRunning) return;
     setContainersLoading(true);
     invoke<DockerContainer[]>("get_containers", { profile: instance.profile })
-      .then((c) => setContainers(c))
+      .then(setContainers)
       .catch(() => setContainers([]))
       .finally(() => setContainersLoading(false));
   };
@@ -72,7 +74,7 @@ export function InstanceCard({
     if (!isRunning) return;
     setImagesLoading(true);
     invoke<DockerImage[]>("get_images", { profile: instance.profile })
-      .then((imgs) => setImages(imgs))
+      .then(setImages)
       .catch(() => setImages([]))
       .finally(() => setImagesLoading(false));
   };
@@ -81,9 +83,23 @@ export function InstanceCard({
     if (!isRunning) return;
     setVolumesLoading(true);
     invoke<DockerVolume[]>("get_volumes", { profile: instance.profile })
-      .then((vols) => setVolumes(vols))
+      .then(setVolumes)
       .catch(() => setVolumes([]))
       .finally(() => setVolumesLoading(false));
+  };
+
+  // Background refresh: no loading indicator — data swaps in place silently
+  const silentRefresh = () => {
+    if (!isRunning) return;
+    if (showContainers)
+      invoke<DockerContainer[]>("get_containers", { profile: instance.profile })
+        .then(setContainers).catch(() => {});
+    if (showImages)
+      invoke<DockerImage[]>("get_images", { profile: instance.profile })
+        .then(setImages).catch(() => {});
+    if (showVolumes)
+      invoke<DockerVolume[]>("get_volumes", { profile: instance.profile })
+        .then(setVolumes).catch(() => {});
   };
 
   useEffect(() => {
@@ -118,9 +134,18 @@ export function InstanceCard({
     }
   };
 
+  // After a VM command finishes, silently refresh open sections
   useEffect(() => {
-    if (!isThisRunning && showContainers && isRunning) fetchContainers();
+    if (!isThisRunning && isRunning) silentRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isThisRunning]);
+
+  // Docker event fired → silently refresh whichever sections are open
+  useEffect(() => {
+    if (tick === 0 || !isRunning) return;
+    silentRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
 
   const handleStop = async () => {
     onViewLogs();
@@ -291,7 +316,7 @@ export function InstanceCard({
 
           {showContainers && (
             <div className="px-4 pb-3.5 space-y-3">
-              {containersLoading ? (
+              {containersLoading && containers.length === 0 ? (
                 <p className="text-[10.5px] text-[#555]">Loading…</p>
               ) : containers.length === 0 ? (
                 <p className="text-[10.5px] text-[#666] italic">No running containers</p>
@@ -339,7 +364,7 @@ export function InstanceCard({
 
           {showImages && (
             <div className="px-4 pb-3.5 space-y-2.5">
-              {imagesLoading ? (
+              {imagesLoading && images.length === 0 ? (
                 <p className="text-[10.5px] text-[#555]">Loading…</p>
               ) : images.length === 0 ? (
                 <p className="text-[10.5px] text-[#666] italic">No images</p>
@@ -386,7 +411,7 @@ export function InstanceCard({
 
           {showVolumes && (
             <div className="px-4 pb-3.5 space-y-2.5">
-              {volumesLoading ? (
+              {volumesLoading && volumes.length === 0 ? (
                 <p className="text-[10.5px] text-[#555]">Loading…</p>
               ) : volumes.length === 0 ? (
                 <p className="text-[10.5px] text-[#666] italic">No volumes</p>

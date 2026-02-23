@@ -1,8 +1,36 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::process::Stdio;
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::task::AbortHandle;
+
+// ─── Watcher State ────────────────────────────────────────────────────────────
+
+/// Holds abort handles for all background watcher tasks, keyed by profile name.
+/// The colima status poller is stored under the key "__poller__".
+pub struct WatcherState {
+    pub handles: Mutex<HashMap<String, AbortHandle>>,
+}
+
+impl Default for WatcherState {
+    fn default() -> Self {
+        Self { handles: Mutex::new(HashMap::new()) }
+    }
+}
+
+/// Payload emitted to the frontend for each Docker daemon event.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerEventPayload {
+    pub profile: String,
+    pub event_type: String, // "container" | "image" | "volume" | "network"
+    pub action: String,     // "start" | "stop" | "die" | "pull" | "create" | "destroy" …
+    pub actor_id: String,
+    pub actor_name: String,
+}
 
 /// Prepend common Homebrew and system paths so GUI app finds colima/docker.
 const EXTRA_PATH: &str =
@@ -646,4 +674,232 @@ pub async fn get_vm_type(profile: String) -> Result<String, String> {
         }
     }
     Ok(String::new())
+}
+
+// ─── Real-time Docker Event Watcher ───────────────────────────────────────────
+
+/// Start streaming `docker events` for a Colima profile.
+/// Emits "docker-event" Tauri events to the frontend for every daemon event.
+/// Replaces any existing watcher for the same profile.
+#[tauri::command]
+pub async fn start_docker_watcher(
+    app: AppHandle,
+    state: tauri::State<'_, WatcherState>,
+    profile: String,
+) -> Result<(), String> {
+    // Cancel any existing watcher for this profile
+    if let Some(old) = state.handles.lock().unwrap().remove(&profile) {
+        old.abort();
+    }
+
+    let context = profile_to_context(&profile);
+    let prof = profile.clone();
+
+    let handle = tokio::spawn(async move {
+        let child = cmd("docker")
+            .args(["--context", &context, "events", "--format", "{{json .}}"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn();
+
+        let mut child = match child {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        if let Some(stdout) = child.stdout.take() {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&line) {
+                    let event_type = raw["Type"]
+                        .as_str()
+                        .unwrap_or("unknown")
+                        .to_lowercase();
+                    let action = raw["Action"].as_str().unwrap_or("").to_string();
+                    let actor_id = raw["Actor"]["ID"].as_str().unwrap_or("").to_string();
+                    // Containers have a "name" attribute; images/volumes use their ID as name
+                    let actor_name = raw["Actor"]["Attributes"]["name"]
+                        .as_str()
+                        .unwrap_or(raw["Actor"]["ID"].as_str().unwrap_or(""))
+                        .to_string();
+
+                    let _ = app.emit(
+                        "docker-event",
+                        DockerEventPayload {
+                            profile: prof.clone(),
+                            event_type,
+                            action,
+                            actor_id,
+                            actor_name,
+                        },
+                    );
+                }
+            }
+        }
+
+        let _ = child.wait().await;
+        // Task ends naturally when `docker events` exits (e.g. VM stopped).
+        // App.tsx will restart the watcher if/when the VM comes back up.
+    });
+
+    state
+        .handles
+        .lock()
+        .unwrap()
+        .insert(profile, handle.abort_handle());
+
+    Ok(())
+}
+
+/// Stop the Docker event watcher for a specific profile.
+#[tauri::command]
+pub async fn stop_docker_watcher(
+    state: tauri::State<'_, WatcherState>,
+    profile: String,
+) -> Result<(), String> {
+    if let Some(handle) = state.handles.lock().unwrap().remove(&profile) {
+        handle.abort();
+    }
+    Ok(())
+}
+
+// ─── Container Log Streaming ──────────────────────────────────────────────────
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ContainerLogLineEvent {
+    pub container_id: String,
+    pub text: String,
+    pub is_err: bool,
+}
+
+/// Stream `docker logs --follow --tail N <container_id>` and emit
+/// "container-log-line" events. The stream is stored in WatcherState under
+/// the key "clog:<container_id>" so it can be cancelled on drawer close.
+#[tauri::command]
+pub async fn stream_container_logs(
+    app: AppHandle,
+    state: tauri::State<'_, WatcherState>,
+    context: String,
+    container_id: String,
+    tail: u32,
+) -> Result<(), String> {
+    let key = format!("clog:{}", container_id);
+
+    // Cancel any existing stream for this container
+    if let Some(old) = state.handles.lock().unwrap().remove(&key) {
+        old.abort();
+    }
+
+    let tail_str = tail.to_string();
+    let cid = container_id.clone();
+
+    let handle = tokio::spawn(async move {
+        let child = cmd("docker")
+            .args(["--context", &context, "logs", "--follow", "--tail", &tail_str, &cid])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
+
+        let mut child = match child {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+
+        let app_out = app.clone();
+        let cid_out = cid.clone();
+        let stdout_task = tokio::spawn(async move {
+            if let Some(s) = stdout {
+                let mut lines = BufReader::new(s).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let _ = app_out.emit(
+                        "container-log-line",
+                        ContainerLogLineEvent { container_id: cid_out.clone(), text: line, is_err: false },
+                    );
+                }
+            }
+        });
+
+        let app_err = app.clone();
+        let cid_err = cid.clone();
+        let stderr_task = tokio::spawn(async move {
+            if let Some(s) = stderr {
+                let mut lines = BufReader::new(s).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let _ = app_err.emit(
+                        "container-log-line",
+                        ContainerLogLineEvent { container_id: cid_err.clone(), text: line, is_err: true },
+                    );
+                }
+            }
+        });
+
+        let _ = tokio::join!(stdout_task, stderr_task);
+        let _ = child.wait().await;
+    });
+
+    state
+        .handles
+        .lock()
+        .unwrap()
+        .insert(key, handle.abort_handle());
+
+    Ok(())
+}
+
+/// Stop the live log stream for a container.
+#[tauri::command]
+pub async fn stop_container_log_stream(
+    state: tauri::State<'_, WatcherState>,
+    container_id: String,
+) -> Result<(), String> {
+    let key = format!("clog:{}", container_id);
+    if let Some(handle) = state.handles.lock().unwrap().remove(&key) {
+        handle.abort();
+    }
+    Ok(())
+}
+
+// ─── Colima Status Poller ─────────────────────────────────────────────────────
+
+/// Poll `colima list` every 3 seconds and emit "colima-status-changed" when
+/// the instance list changes. Replaces the 20-second JS setInterval.
+#[tauri::command]
+pub async fn start_colima_poller(
+    app: AppHandle,
+    state: tauri::State<'_, WatcherState>,
+) -> Result<(), String> {
+    // Cancel any existing poller
+    if let Some(old) = state.handles.lock().unwrap().remove("__poller__") {
+        old.abort();
+    }
+
+    let handle = tokio::spawn(async move {
+        let mut last_raw = String::new();
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+            if let Ok(out) = cmd("colima").args(["list"]).output().await {
+                let raw = String::from_utf8_lossy(&out.stdout).to_string();
+                // Only parse + emit when the raw output changed
+                if raw != last_raw {
+                    if let Ok(instances) = parse_colima_list(&raw) {
+                        let _ = app.emit("colima-status-changed", &instances);
+                    }
+                    last_raw = raw;
+                }
+            }
+        }
+    });
+
+    state
+        .handles
+        .lock()
+        .unwrap()
+        .insert("__poller__".to_string(), handle.abort_handle());
+
+    Ok(())
 }

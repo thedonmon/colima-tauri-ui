@@ -44,6 +44,12 @@ export interface ContainerLogLine {
   isErr: boolean;
 }
 
+export interface ContainerLogLineEvent {
+  containerId: string;
+  text: string;
+  isErr: boolean;
+}
+
 export interface ContainerLogsTarget {
   container: DockerContainer;
   context: string; // docker context name, e.g. "colima", "colima-dev"
@@ -61,5 +67,13 @@ export interface DockerVolume {
   name: string;
   driver: string;
   mountpoint: string;
+}
+
+export interface DockerEvent {
+  profile: string;
+  eventType: string; // "container" | "image" | "volume" | "network"
+  action: string;    // "start" | "stop" | "die" | "pull" | "create" | "destroy" …
+  actorId: string;
+  actorName: string;
 }
 
