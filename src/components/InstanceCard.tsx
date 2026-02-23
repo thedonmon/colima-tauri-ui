@@ -42,6 +42,8 @@ export function InstanceCard({
 
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [showContainers, setShowContainers] = useState(false);
+  const [showStopped, setShowStopped] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [containers, setContainers] = useState<DockerContainer[]>([]);
   const [containersLoading, setContainersLoading] = useState(false);
   const [showImages, setShowImages] = useState(false);
@@ -64,7 +66,7 @@ export function InstanceCard({
   const fetchContainers = () => {
     if (!isRunning) return;
     setContainersLoading(true);
-    invoke<DockerContainer[]>("get_containers", { profile: instance.profile })
+    invoke<DockerContainer[]>("get_containers", { profile: instance.profile, showAll: showStopped })
       .then(setContainers)
       .catch(() => setContainers([]))
       .finally(() => setContainersLoading(false));
@@ -92,7 +94,7 @@ export function InstanceCard({
   const silentRefresh = () => {
     if (!isRunning) return;
     if (showContainers)
-      invoke<DockerContainer[]>("get_containers", { profile: instance.profile })
+      invoke<DockerContainer[]>("get_containers", { profile: instance.profile, showAll: showStopped })
         .then(setContainers).catch(() => {});
     if (showImages)
       invoke<DockerImage[]>("get_images", { profile: instance.profile })
@@ -104,7 +106,8 @@ export function InstanceCard({
 
   useEffect(() => {
     if (showContainers && isRunning) fetchContainers();
-  }, [showContainers, isRunning]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showContainers, isRunning, showStopped]);
 
   useEffect(() => {
     if (showImages && isRunning) fetchImages();
@@ -299,11 +302,11 @@ export function InstanceCard({
       {isRunning && (
         <>
         <div className="border-t border-white/[0.06]">
-          <button
-            onClick={() => setShowContainers((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-2 text-[10.5px] text-[#666] hover:text-[#999] hover:bg-white/[0.03] transition-all"
-          >
-            <span className="flex items-center gap-1.5">
+          <div className="flex items-center px-4 py-2">
+            <button
+              onClick={() => setShowContainers((v) => !v)}
+              className="flex items-center gap-1.5 text-[10.5px] text-[#666] hover:text-[#999] transition-all flex-1"
+            >
               {showContainers ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
               <span>Containers</span>
               {containers.length > 0 && (
@@ -311,28 +314,85 @@ export function InstanceCard({
                   {containers.length}
                 </span>
               )}
-            </span>
-          </button>
-
-          {showContainers && (
-            <div className="px-4 pb-3.5 space-y-3">
-              {containersLoading && containers.length === 0 ? (
-                <p className="text-[10.5px] text-[#555]">Loading…</p>
-              ) : containers.length === 0 ? (
-                <p className="text-[10.5px] text-[#666] italic">No running containers</p>
-              ) : (
-                containers.map((c) => (
-                  <ContainerRow
-                    key={c.id}
-                    container={c}
-                    context={dockerContext}
-                    onLogsOpen={onContainerLogsOpen}
-                    onRefresh={fetchContainers}
-                  />
-                ))
+            </button>
+            <button
+              onClick={() => setShowStopped((v) => !v)}
+              className={cn(
+                "text-[9.5px] px-1.5 py-0.5 rounded transition-all",
+                showStopped
+                  ? "bg-white/[0.08] text-[#888]"
+                  : "text-[#555] hover:text-[#777]"
               )}
-            </div>
-          )}
+            >
+              {showStopped ? "All" : "Running"}
+            </button>
+          </div>
+
+          {showContainers && (() => {
+            const groups = new Map<string, DockerContainer[]>();
+            const standalone: DockerContainer[] = [];
+            for (const c of containers) {
+              if (c.composeProject) {
+                groups.set(c.composeProject, [...(groups.get(c.composeProject) ?? []), c]);
+              } else {
+                standalone.push(c);
+              }
+            }
+            const sortedGroups = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+            return (
+              <div className="px-4 pb-3.5 space-y-3">
+                {containersLoading && containers.length === 0 ? (
+                  <p className="text-[10.5px] text-[#555]">Loading…</p>
+                ) : containers.length === 0 ? (
+                  <p className="text-[10.5px] text-[#666] italic">
+                    {showStopped ? "No containers" : "No running containers"}
+                  </p>
+                ) : (
+                  <>
+                    {sortedGroups.map(([project, members]) => {
+                      const isOpen = openGroups[project] ?? true;
+                      return (
+                        <div key={project}>
+                          <button
+                            onClick={() =>
+                              setOpenGroups((prev) => ({ ...prev, [project]: !isOpen }))
+                            }
+                            className="flex items-center gap-1 text-[9.5px] text-[#666] hover:text-[#999] w-full mb-1 transition-all"
+                          >
+                            {isOpen ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                            <span className="font-medium">{project}</span>
+                            <span className="ml-auto text-[#555]">{members.length}</span>
+                          </button>
+                          {isOpen && (
+                            <div className="space-y-2 ml-3">
+                              {members.map((c) => (
+                                <ContainerRow
+                                  key={c.id}
+                                  container={c}
+                                  context={dockerContext}
+                                  onLogsOpen={onContainerLogsOpen}
+                                  onRefresh={fetchContainers}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {standalone.map((c) => (
+                      <ContainerRow
+                        key={c.id}
+                        container={c}
+                        context={dockerContext}
+                        onLogsOpen={onContainerLogsOpen}
+                        onRefresh={fetchContainers}
+                      />
+                    ))}
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Images accordion */}

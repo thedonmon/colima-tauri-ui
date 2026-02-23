@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Play, Square, RotateCcw, Pause, Play as Resume, ScrollText } from "lucide-react";
+import { Play, Square, RotateCcw, Pause, Play as Resume, ScrollText, Trash2 } from "lucide-react";
 import { cn } from "../lib/utils";
 import type { DockerContainer, ContainerLogsTarget } from "../types";
 
@@ -11,11 +11,12 @@ export interface ContainerRowProps {
   onRefresh: () => void;
 }
 
-type Action = "start" | "stop" | "restart" | "pause" | "unpause";
+type Action = "start" | "stop" | "restart" | "pause" | "unpause" | "rm";
 
 export function ContainerRow({ container, context, onLogsOpen, onRefresh }: ContainerRowProps) {
   const [busyAction, setBusyAction] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const status = container.status ?? "";
   const up = status.toLowerCase().startsWith("up");
@@ -102,14 +103,45 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
                 />
               </>
             ) : (
-              <ContainerBtn
-                icon={<Play size={9} />}
-                label="Start"
-                onClick={() => handleAction("start")}
-                active={busyAction === "start"}
-                disabled={isBusy}
-                variant="start"
-              />
+              <>
+                <ContainerBtn
+                  icon={<Play size={9} />}
+                  label="Start"
+                  onClick={() => handleAction("start")}
+                  active={busyAction === "start"}
+                  disabled={isBusy}
+                  variant="start"
+                />
+                {confirmRemove ? (
+                  <>
+                    <ContainerBtn
+                      icon={null}
+                      label="Cancel"
+                      onClick={() => setConfirmRemove(false)}
+                      active={false}
+                      disabled={isBusy}
+                      variant="default"
+                    />
+                    <ContainerBtn
+                      icon={null}
+                      label="Confirm"
+                      onClick={() => handleAction("rm")}
+                      active={busyAction === "rm"}
+                      disabled={isBusy}
+                      variant="danger"
+                    />
+                  </>
+                ) : (
+                  <ContainerBtn
+                    icon={<Trash2 size={9} />}
+                    label="Remove"
+                    onClick={() => setConfirmRemove(true)}
+                    active={false}
+                    disabled={isBusy}
+                    variant="danger"
+                  />
+                )}
+              </>
             )}
             <ContainerBtn
               icon={<ScrollText size={9} />}
@@ -130,7 +162,7 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
   );
 }
 
-type BtnVariant = "start" | "stop" | "pause" | "restart" | "default";
+type BtnVariant = "start" | "stop" | "pause" | "restart" | "default" | "danger";
 
 interface BtnProps {
   icon: ReactNode;
@@ -154,7 +186,8 @@ function ContainerBtn({ icon, label, onClick, active, disabled, variant }: BtnPr
         variant === "stop" && "bg-red-500/12 text-red-400 hover:bg-red-500/20",
         variant === "pause" && "bg-amber-500/12 text-amber-400 hover:bg-amber-500/20",
         variant === "restart" && "bg-blue-500/12 text-blue-400 hover:bg-blue-500/20",
-        variant === "default" && "bg-white/[0.05] text-[#777] hover:bg-white/[0.09] hover:text-[#aaa]"
+        variant === "default" && "bg-white/[0.05] text-[#777] hover:bg-white/[0.09] hover:text-[#aaa]",
+        variant === "danger" && "bg-red-500/12 text-red-400 hover:bg-red-500/20"
       )}
     >
       {active ? (

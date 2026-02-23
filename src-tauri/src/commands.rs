@@ -42,6 +42,14 @@ fn cmd(program: &str) -> Command {
     c
 }
 
+fn extract_label(labels: &str, key: &str) -> String {
+    labels
+        .split(',')
+        .find_map(|kv| kv.strip_prefix(&format!("{}=", key)))
+        .unwrap_or("")
+        .to_string()
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -58,6 +66,12 @@ pub struct DockerContainer {
     pub status: String,
     #[serde(rename(deserialize = "Ports"), default)]
     pub ports: String,
+    #[serde(rename(deserialize = "Labels"), default)]
+    labels: String,
+    #[serde(rename(serialize = "composeProject"), skip_deserializing, default)]
+    pub compose_project: String,
+    #[serde(rename(serialize = "composeService"), skip_deserializing, default)]
+    pub compose_service: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -332,8 +346,8 @@ pub async fn read_config(profile: String) -> Result<String, String> {
 
 /// Returns Docker containers for any named Docker context (generic).
 #[tauri::command]
-pub async fn get_containers_by_context(context: String) -> Result<Vec<DockerContainer>, String> {
-    fetch_containers(&context).await
+pub async fn get_containers_by_context(context: String, show_all: bool) -> Result<Vec<DockerContainer>, String> {
+    fetch_containers(&context, show_all).await
 }
 
 // ─── Container log line type ──────────────────────────────────────────────────
@@ -354,7 +368,7 @@ pub async fn container_action(
     container_id: String,
     action: String,
 ) -> Result<(), String> {
-    let allowed = ["start", "stop", "restart", "pause", "unpause"];
+    let allowed = ["start", "stop", "restart", "pause", "unpause", "rm"];
     if !allowed.contains(&action.as_str()) {
         return Err(format!("invalid action '{}'", action));
     }
@@ -408,9 +422,13 @@ pub async fn get_container_logs(
 }
 
 /// Shared helper: runs `docker --context <ctx> ps --format "{{json .}}"` and parses output.
-async fn fetch_containers(context: &str) -> Result<Vec<DockerContainer>, String> {
+async fn fetch_containers(context: &str, show_all: bool) -> Result<Vec<DockerContainer>, String> {
+    let mut args = vec!["--context", context, "ps", "--format", "{{json .}}"];
+    if show_all {
+        args.push("--all");
+    }
     let out = cmd("docker")
-        .args(["--context", context, "ps", "--format", "{{json .}}"])
+        .args(&args)
         .output()
         .await
         .map_err(|e| format!("docker not found: {}", e))?;
@@ -426,7 +444,9 @@ async fn fetch_containers(context: &str) -> Result<Vec<DockerContainer>, String>
         if line.is_empty() {
             continue;
         }
-        if let Ok(c) = serde_json::from_str::<DockerContainer>(line) {
+        if let Ok(mut c) = serde_json::from_str::<DockerContainer>(line) {
+            c.compose_project = extract_label(&c.labels, "com.docker.compose.project");
+            c.compose_service = extract_label(&c.labels, "com.docker.compose.service");
             containers.push(c);
         }
     }
@@ -446,8 +466,8 @@ fn profile_to_context(profile: &str) -> String {
 
 /// Returns Docker containers running inside a Colima instance.
 #[tauri::command]
-pub async fn get_containers(profile: String) -> Result<Vec<DockerContainer>, String> {
-    fetch_containers(&profile_to_context(&profile)).await
+pub async fn get_containers(profile: String, show_all: bool) -> Result<Vec<DockerContainer>, String> {
+    fetch_containers(&profile_to_context(&profile), show_all).await
 }
 
 // ─── Images ───────────────────────────────────────────────────────────────────

@@ -37,6 +37,8 @@ export interface DockerContainer {
   image: string;
   status: string;
   ports: string;
+  composeProject: string;
+  composeService: string;
 }
 
 export interface ContainerLogLine {

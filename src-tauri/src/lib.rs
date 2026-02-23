@@ -42,7 +42,7 @@ pub fn run() {
             commands::start_colima_poller,
         ])
         .setup(|app| {
-            // Hide dock icon — this app lives in the menu bar only
+            // Start as Accessory (no Dock icon, no Cmd+Tab) — switches to Regular when visible
             #[cfg(target_os = "macos")]
             {
                 use tauri::ActivationPolicy;
@@ -57,10 +57,16 @@ pub fn run() {
 
                 // Intercept the native close button (X) to hide instead of quit
                 let win = window.clone();
+                let app_handle = app.app_handle().clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = win.hide();
+                        #[cfg(target_os = "macos")]
+                        {
+                            use tauri::ActivationPolicy;
+                            let _ = app_handle.set_activation_policy(ActivationPolicy::Accessory);
+                        }
                     }
                 });
             }
@@ -85,7 +91,17 @@ pub fn run() {
                         if let Some(win) = app.get_webview_window("main") {
                             if win.is_visible().unwrap_or(false) {
                                 let _ = win.hide();
+                                #[cfg(target_os = "macos")]
+                                {
+                                    use tauri::ActivationPolicy;
+                                    let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+                                }
                             } else {
+                                #[cfg(target_os = "macos")]
+                                {
+                                    use tauri::ActivationPolicy;
+                                    let _ = app.set_activation_policy(ActivationPolicy::Regular);
+                                }
                                 let _ = win.show();
                                 let _ = win.set_focus();
                             }
@@ -104,7 +120,17 @@ pub fn run() {
                         if let Some(win) = app.get_webview_window("main") {
                             if win.is_visible().unwrap_or(false) {
                                 let _ = win.hide();
+                                #[cfg(target_os = "macos")]
+                                {
+                                    use tauri::ActivationPolicy;
+                                    let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+                                }
                             } else {
+                                #[cfg(target_os = "macos")]
+                                {
+                                    use tauri::ActivationPolicy;
+                                    let _ = app.set_activation_policy(ActivationPolicy::Regular);
+                                }
                                 let _ = win.show();
                                 let _ = win.set_focus();
                             }
