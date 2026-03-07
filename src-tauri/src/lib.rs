@@ -1,6 +1,7 @@
 mod commands;
 
 use tauri::{
+    image::Image as TauriImage,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
@@ -80,11 +81,20 @@ pub fn run() {
                 .item(&quit)
                 .build()?;
 
-            // Tray icon — left click toggles, right click shows menu
+            // Tray icon — left click toggles window, right click shows menu
+            // Decode the PNG into raw RGBA for tauri::image::Image
+            let tray_png = image::load_from_memory(include_bytes!("../icons/tray-icon.png"))
+                .expect("failed to decode tray icon")
+                .into_rgba8();
+            let (w, h) = tray_png.dimensions();
+            let tray_icon = TauriImage::new_owned(tray_png.into_raw(), w, h);
+
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
+                .icon_as_template(true)
                 .tooltip("Colima Manager")
                 .menu(&menu)
+                .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
                     "show-hide" => {
