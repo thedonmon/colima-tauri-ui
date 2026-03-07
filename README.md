@@ -52,6 +52,29 @@ Then use the **AI** tab → **colima model setup** to get started. The app will 
 
 ---
 
+## Installation
+
+### Download (recommended)
+
+1. Go to the [latest release](https://github.com/thedonmon/colima-tauri-ui/releases/latest)
+2. Download the `.dmg` file
+3. Drag **Colima Manager** to your Applications folder
+
+> **Note:** On first launch, macOS may block the app. Go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+### Build from source
+
+```sh
+git clone https://github.com/thedonmon/colima-tauri-ui.git
+cd colima-tauri-ui
+npm install
+npm run tauri build
+```
+
+The built app will be at `src-tauri/target/release/bundle/macos/Colima Manager.app`. Copy it to `/Applications`.
+
+---
+
 ## Getting Started
 
 ### Install Colima
@@ -63,8 +86,10 @@ brew install docker
 
 ### Start your first VM
 
+You can start a VM from the app or from the terminal:
+
 ```sh
-# Default (QEMU, Docker runtime)
+# Default (VZ, Docker runtime)
 colima start
 
 # With custom resources
