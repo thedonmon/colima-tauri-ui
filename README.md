@@ -60,7 +60,11 @@ Then use the **AI** tab → **colima model setup** to get started. The app will 
 2. Download the `.dmg` file
 3. Drag **Colima Manager** to your Applications folder
 
-> **Note:** On first launch, macOS may block the app. Go to **System Settings → Privacy & Security** and click **Open Anyway**.
+> **Note:** Since the app is not code-signed, macOS will quarantine it. After dragging to Applications, run:
+> ```sh
+> xattr -cr "/Applications/Colima Manager.app"
+> ```
+> Then open the app normally.
 
 ### Build from source
 
