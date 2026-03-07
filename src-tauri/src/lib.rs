@@ -78,6 +78,8 @@ pub fn run() {
             commands::stream_container_logs,
             commands::stop_container_log_stream,
             commands::start_colima_poller,
+            commands::load_settings,
+            commands::save_settings,
         ])
         .setup(|app| {
             // Start as Accessory (no Dock icon, no Cmd+Tab)

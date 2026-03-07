@@ -1,7 +1,7 @@
-import { Server, Layers, Sparkles } from "lucide-react";
+import { Server, Layers, Sparkles, Settings } from "lucide-react";
 import { cn } from "../lib/utils";
 
-export type AppTab = "instances" | "docker" | "ai";
+export type AppTab = "instances" | "docker" | "ai" | "settings";
 
 interface SidebarProps {
   activeTab: AppTab;
@@ -12,6 +12,7 @@ const tabs: { id: AppTab; icon: React.ReactNode; label: string; color: string }[
   { id: "instances", icon: <Server size={16} />, label: "VMs", color: "text-blue-400" },
   { id: "docker", icon: <Layers size={16} />, label: "Docker", color: "text-cyan-400" },
   { id: "ai", icon: <Sparkles size={16} />, label: "AI", color: "text-purple-400" },
+  { id: "settings", icon: <Settings size={16} />, label: "Settings", color: "text-gray-400" },
 ];
 
 export function Sidebar({ activeTab, onTabChange }: SidebarProps) {

@@ -5,6 +5,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Plus } from "lucide-react";
 
 import { useColimaStore } from "./store";
+import { useSettingsStore } from "./store/settings";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import type { AppTab } from "./components/Sidebar";
@@ -16,6 +17,7 @@ import { ContainerLogsDrawer } from "./components/ContainerLogsDrawer";
 import { DockerDesktopSection } from "./components/DockerDesktopSection";
 import { ModelSection } from "./components/ModelSection";
 import { SetupGuide } from "./components/SetupGuide";
+import { Settings } from "./components/Settings";
 import type { ColimaInstance, DockerEvent, LogLine, ContainerLogsTarget } from "./types";
 
 import "./index.css";
@@ -35,19 +37,14 @@ export default function App() {
     dockerContexts,
   } = useColimaStore();
 
+  const { hideOnFocusLoss, load: loadSettings } = useSettingsStore();
+
   const [showStartModal, setShowStartModal] = useState(false);
   const [startProfile, setStartProfile] = useState<string | undefined>();
   const [showLogs, setShowLogs] = useState(false);
   const [configProfile, setConfigProfile] = useState<string | null>(null);
   const [containerLogsTarget, setContainerLogsTarget] = useState<ContainerLogsTarget | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>("instances");
-
-  const showStartModalRef = useRef(showStartModal);
-  const configProfileRef = useRef(configProfile);
-  const containerLogsRef = useRef(containerLogsTarget);
-  useEffect(() => { showStartModalRef.current = showStartModal; }, [showStartModal]);
-  useEffect(() => { configProfileRef.current = configProfile; }, [configProfile]);
-  useEffect(() => { containerLogsRef.current = containerLogsTarget; }, [containerLogsTarget]);
 
   // Track which profiles currently have an active docker-events watcher
   const watchingProfiles = useRef(new Set<string>());
@@ -58,14 +55,12 @@ export default function App() {
         .filter((i) => i.status.toLowerCase() === "running")
         .map((i) => i.profile)
     );
-    // Stop watchers for instances that are no longer running
     for (const profile of [...watchingProfiles.current]) {
       if (!runningNow.has(profile)) {
         invoke("stop_docker_watcher", { profile }).catch(() => {});
         watchingProfiles.current.delete(profile);
       }
     }
-    // Start watchers for newly running instances
     for (const profile of runningNow) {
       if (!watchingProfiles.current.has(profile)) {
         invoke("start_docker_watcher", { profile }).catch(() => {});
@@ -75,45 +70,31 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Load settings
+    loadSettings();
+
     // Initial load
     fetchInstances().then(() => syncWatchers(useColimaStore.getState().instances));
     fetchVersion();
     fetchDockerContexts();
 
-    // Start the Colima status poller (replaces 20-second JS setInterval)
     invoke("start_colima_poller").catch(() => {});
 
-    // Colima VM list changed -> update store + sync watchers
     const unlistenColima = listen<ColimaInstance[]>("colima-status-changed", (e) => {
       setInstances(e.payload);
       syncWatchers(e.payload);
     });
 
-    // Docker daemon event -> bump the per-profile tick so open sections auto-refresh
     const unlistenDocker = listen<DockerEvent>("docker-event", (e) => {
       bumpDockerTick(e.payload.profile);
     });
 
     const unlistenLog = listen<LogLine>("log-line", (e) => addLog(e.payload));
 
-    const appWindow = getCurrentWebviewWindow();
-    const unlistenFocus = appWindow.onFocusChanged(({ payload: focused }) => {
-      if (
-        !focused &&
-        !showStartModalRef.current &&
-        configProfileRef.current === null &&
-        containerLogsRef.current === null
-      ) {
-        appWindow.hide();
-      }
-    });
-
     return () => {
       unlistenColima.then((f) => f());
       unlistenDocker.then((f) => f());
       unlistenLog.then((f) => f());
-      unlistenFocus.then((f) => f());
-      // Clean up all active watchers
       for (const profile of watchingProfiles.current) {
         invoke("stop_docker_watcher", { profile }).catch(() => {});
       }
@@ -121,6 +102,22 @@ export default function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-hide on focus loss (when setting is enabled)
+  useEffect(() => {
+    if (!hideOnFocusLoss) return;
+
+    const appWindow = getCurrentWebviewWindow();
+    const unlisten = appWindow.onFocusChanged(({ payload: focused }) => {
+      if (!focused) {
+        appWindow.hide();
+      }
+    });
+
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, [hideOnFocusLoss]);
 
   useEffect(() => {
     if (isRunningCommand) {
@@ -139,7 +136,6 @@ export default function App() {
     setShowStartModal(true);
   };
 
-  // Show setup guide when colima is definitely not installed
   const showSetupGuide = colimaInstalled === false;
 
   return (
@@ -161,7 +157,6 @@ export default function App() {
 
       {/* Body */}
       <div className="flex flex-row flex-1 min-h-0">
-        {/* Only show sidebar when colima is installed */}
         {!showSetupGuide && (
           <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
         )}
@@ -172,7 +167,6 @@ export default function App() {
             <SetupGuide />
           ) : (
             <div className="px-3 py-3 space-y-3">
-              {/* Instances tab */}
               {activeTab === "instances" && (
                 <>
                   {isLoading && instances.length === 0 ? (
@@ -200,7 +194,6 @@ export default function App() {
                 </>
               )}
 
-              {/* Docker tab */}
               {activeTab === "docker" && (
                 <>
                   {hasDesktopContext ? (
@@ -217,10 +210,11 @@ export default function App() {
                 </>
               )}
 
-              {/* AI tab */}
               {activeTab === "ai" && (
                 <ModelSection defaultOpen onViewLogs={() => setShowLogs(true)} />
               )}
+
+              {activeTab === "settings" && <Settings />}
             </div>
           )}
         </div>

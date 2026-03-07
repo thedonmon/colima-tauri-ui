@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::AbortHandle;
@@ -922,4 +922,32 @@ pub async fn start_colima_poller(
         .insert("__poller__".to_string(), handle.abort_handle());
 
     Ok(())
+}
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+
+fn settings_path(app: &AppHandle) -> std::path::PathBuf {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .expect("failed to resolve app config dir");
+    std::fs::create_dir_all(&dir).ok();
+    dir.join("settings.json")
+}
+
+#[tauri::command]
+pub async fn load_settings(app: AppHandle) -> Result<serde_json::Value, String> {
+    let path = settings_path(&app);
+    if !path.exists() {
+        return Ok(serde_json::json!({}));
+    }
+    let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_settings(app: AppHandle, settings: serde_json::Value) -> Result<(), String> {
+    let path = settings_path(&app);
+    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(&path, data).map_err(|e| e.to_string())
 }
