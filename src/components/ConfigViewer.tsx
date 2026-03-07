@@ -26,30 +26,30 @@ export function ConfigViewer({ profile, onClose }: ConfigViewerProps) {
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex flex-col bg-[#13141a] rounded-2xl">
+    <div className="absolute inset-0 z-50 flex flex-col bg-panel rounded-2xl">
       {/* Traffic-light clearance */}
-      <div className="h-8 flex-shrink-0" data-tauri-drag-region />
+      <div className="h-9 flex-shrink-0" data-tauri-drag-region />
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div>
-          <p className="text-[12px] font-semibold text-[#e0e0e0]">colima.yaml</p>
-          <p className="text-[10px] text-[#777]">~/.colima/{profile}/colima.yaml</p>
+          <p className="text-sm font-semibold text-fg">colima.yaml</p>
+          <p className="text-xs text-fg-muted">~/.colima/{profile}/colima.yaml</p>
         </div>
         <div className="flex items-center gap-2">
           {config && (
             <button
               onClick={handleCopy}
-              className="text-[#555] hover:text-[#909296] transition-colors"
+              className="text-fg-faint hover:text-fg-secondary transition-colors"
               title="Copy to clipboard"
             >
-              {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+              {copied ? <Check size={15} className="text-green-400" /> : <Copy size={15} />}
             </button>
           )}
           <button
             onClick={onClose}
-            className="text-[#555] hover:text-[#909296] transition-colors"
+            className="text-fg-faint hover:text-fg-secondary transition-colors"
           >
-            <X size={14} />
+            <X size={16} />
           </button>
         </div>
       </div>
@@ -57,11 +57,11 @@ export function ConfigViewer({ profile, onClose }: ConfigViewerProps) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
         {error ? (
-          <p className="text-[11px] text-red-400">{error}</p>
+          <p className="text-sm text-red-400">{error}</p>
         ) : config === null ? (
-          <p className="text-[11px] text-[#444]">Loading…</p>
+          <p className="text-sm text-fg-faint">Loading...</p>
         ) : (
-          <pre className="text-[11px] text-[#909296] font-mono leading-relaxed whitespace-pre-wrap break-all">
+          <pre className="text-sm text-fg-secondary font-mono leading-relaxed whitespace-pre-wrap break-all">
             {config}
           </pre>
         )}

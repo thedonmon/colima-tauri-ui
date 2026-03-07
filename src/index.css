@@ -1,12 +1,34 @@
 @import "tailwindcss";
 
-/* Tailwind v4 preflight already resets margin, padding, and box-sizing.
-   Do NOT add unlayered `* { padding: 0 }` — unlayered CSS overrides ALL
-   @layer-based utilities (cascade layers spec), breaking every px/py class. */
+@theme {
+  /* ─── Surface / Background ─── */
+  --color-app-bg: oklch(0.17 0.01 270);
+  --color-panel: oklch(0.14 0.01 270);
+  --color-panel-alt: oklch(0.20 0.01 270);
+
+  /* ─── Text ─── */
+  --color-fg: oklch(0.92 0.01 270);
+  --color-fg-secondary: oklch(0.72 0.01 270);
+  --color-fg-muted: oklch(0.55 0.01 270);
+  --color-fg-faint: oklch(0.42 0.01 270);
+
+  /* ─── Icon ─── */
+  --color-icon: oklch(0.50 0.01 270);
+  --color-icon-muted: oklch(0.40 0.01 270);
+
+  /* ─── Border ─── */
+  --color-border: oklch(0.30 0.01 270);
+  --color-border-subtle: oklch(0.25 0.01 270);
+
+  /* ─── Scrollbar ─── */
+  --color-scrollbar: oklch(0.30 0.01 270);
+  --color-scrollbar-hover: oklch(0.36 0.01 270);
+}
 
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -22,19 +44,44 @@ body,
 
 /* Thin scrollbar */
 ::-webkit-scrollbar {
-  width: 3px;
+  width: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2e2f36;
-  border-radius: 2px;
+  background: var(--color-scrollbar);
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3b42;
+  background: var(--color-scrollbar-hover);
 }
 
 button {
   user-select: none;
+}
+
+/* Range slider styling for the start modal */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-border);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: oklch(0.64 0.19 260);
+  cursor: pointer;
+  border: 2px solid var(--color-panel-alt);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: oklch(0.70 0.19 260);
+  transform: scale(1.1);
 }

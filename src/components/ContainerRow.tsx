@@ -43,32 +43,32 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
 
   return (
     <div>
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-3">
         {/* Status dot */}
         <span
           className={cn(
-            "mt-[5px] h-1.5 w-1.5 rounded-full flex-shrink-0",
+            "mt-[6px] h-2 w-2 rounded-full flex-shrink-0",
             unhealthy
               ? "bg-red-400/80 animate-pulse"
               : paused
               ? "bg-amber-400/70"
               : up
               ? "bg-emerald-500/80"
-              : "bg-[#383838]"
+              : "bg-border"
           )}
         />
 
         <div className="min-w-0 flex-1">
-          <p className="text-[10.5px] font-medium text-[#d0d1d4] truncate leading-snug">
+          <p className="text-sm font-medium text-fg truncate leading-snug">
             {container.names || "—"}
           </p>
-          <p className="text-[9.5px] text-[#777] truncate mb-1.5">{container.image || "—"}</p>
+          <p className="text-xs text-fg-muted truncate mb-2">{container.image || "—"}</p>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-1 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {paused ? (
               <ContainerBtn
-                icon={<Resume size={9} />}
+                icon={<Resume size={11} />}
                 label="Resume"
                 onClick={() => handleAction("unpause")}
                 active={busyAction === "unpause"}
@@ -78,7 +78,7 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
             ) : up ? (
               <>
                 <ContainerBtn
-                  icon={<Square size={9} />}
+                  icon={<Square size={11} />}
                   label="Stop"
                   onClick={() => handleAction("stop")}
                   active={busyAction === "stop"}
@@ -86,7 +86,7 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
                   variant="stop"
                 />
                 <ContainerBtn
-                  icon={<Pause size={9} />}
+                  icon={<Pause size={11} />}
                   label="Pause"
                   onClick={() => handleAction("pause")}
                   active={busyAction === "pause"}
@@ -94,7 +94,7 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
                   variant="pause"
                 />
                 <ContainerBtn
-                  icon={<RotateCcw size={9} />}
+                  icon={<RotateCcw size={11} />}
                   label="Restart"
                   onClick={() => handleAction("restart")}
                   active={busyAction === "restart"}
@@ -105,7 +105,7 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
             ) : (
               <>
                 <ContainerBtn
-                  icon={<Play size={9} />}
+                  icon={<Play size={11} />}
                   label="Start"
                   onClick={() => handleAction("start")}
                   active={busyAction === "start"}
@@ -133,7 +133,7 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
                   </>
                 ) : (
                   <ContainerBtn
-                    icon={<Trash2 size={9} />}
+                    icon={<Trash2 size={11} />}
                     label="Remove"
                     onClick={() => setConfirmRemove(true)}
                     active={false}
@@ -144,7 +144,7 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
               </>
             )}
             <ContainerBtn
-              icon={<ScrollText size={9} />}
+              icon={<ScrollText size={11} />}
               label="Logs"
               onClick={() => onLogsOpen({ container, context })}
               active={false}
@@ -154,7 +154,7 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
           </div>
 
           {error && (
-            <p className="text-[9.5px] text-red-400/70 mt-1 leading-snug">{error}</p>
+            <p className="text-xs text-red-400/70 mt-1.5 leading-snug">{error}</p>
           )}
         </div>
       </div>
@@ -179,19 +179,19 @@ function ContainerBtn({ icon, label, onClick, active, disabled, variant }: BtnPr
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9.5px] font-medium transition-all",
+        "flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-all",
         "disabled:opacity-35 disabled:cursor-not-allowed",
         active && "opacity-70",
         variant === "start" && "bg-emerald-500/12 text-emerald-400 hover:bg-emerald-500/20",
         variant === "stop" && "bg-red-500/12 text-red-400 hover:bg-red-500/20",
         variant === "pause" && "bg-amber-500/12 text-amber-400 hover:bg-amber-500/20",
         variant === "restart" && "bg-blue-500/12 text-blue-400 hover:bg-blue-500/20",
-        variant === "default" && "bg-white/[0.05] text-[#777] hover:bg-white/[0.09] hover:text-[#aaa]",
+        variant === "default" && "bg-white/[0.05] text-fg-muted hover:bg-white/[0.09] hover:text-fg-secondary",
         variant === "danger" && "bg-red-500/12 text-red-400 hover:bg-red-500/20"
       )}
     >
       {active ? (
-        <span className="h-1 w-1 rounded-full bg-current animate-pulse" />
+        <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
       ) : (
         icon
       )}

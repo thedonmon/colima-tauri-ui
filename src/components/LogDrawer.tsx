@@ -11,42 +11,41 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
   const { logs, isRunningCommand } = useColimaStore();
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new lines
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
   return (
-    <div className="border-t border-white/8 bg-[#13141a] flex flex-col" style={{ height: 180 }}>
+    <div className="border-t border-border bg-panel flex flex-col" style={{ height: 200 }}>
       {/* Drawer header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/6">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-subtle">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-medium text-[#666] uppercase tracking-wide">
+          <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">
             Output
           </span>
           {isRunningCommand && (
-            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+            <span className="inline-flex h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
           )}
         </div>
         <button
           onClick={onClose}
-          className="text-[#555] hover:text-[#777] transition-colors"
+          className="text-fg-faint hover:text-fg-muted transition-colors"
         >
-          <ChevronDown size={14} />
+          <ChevronDown size={16} />
         </button>
       </div>
 
       {/* Log lines */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-0.5 font-mono text-[11px]">
+      <div className="flex-1 overflow-y-auto p-3 space-y-0.5 font-mono text-xs">
         {logs.length === 0 ? (
-          <span className="text-[#666]">Waiting for output…</span>
+          <span className="text-fg-muted">Waiting for output...</span>
         ) : (
           logs.map((log, i) => (
             <div
               key={i}
               className={cn(
                 "leading-relaxed whitespace-pre-wrap break-all",
-                log.isError ? "text-red-400/80" : "text-[#909296]"
+                log.isError ? "text-red-400/80" : "text-fg-secondary"
               )}
             >
               {log.line}

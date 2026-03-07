@@ -83,13 +83,13 @@ export default function App() {
     // Start the Colima status poller (replaces 20-second JS setInterval)
     invoke("start_colima_poller").catch(() => {});
 
-    // Colima VM list changed → update store + sync watchers
+    // Colima VM list changed -> update store + sync watchers
     const unlistenColima = listen<ColimaInstance[]>("colima-status-changed", (e) => {
       setInstances(e.payload);
       syncWatchers(e.payload);
     });
 
-    // Docker daemon event → bump the per-profile tick so open sections auto-refresh
+    // Docker daemon event -> bump the per-profile tick so open sections auto-refresh
     const unlistenDocker = listen<DockerEvent>("docker-event", (e) => {
       bumpDockerTick(e.payload.profile);
     });
@@ -143,7 +143,7 @@ export default function App() {
   const showSetupGuide = colimaInstalled === false;
 
   return (
-    <div className="relative flex flex-col h-screen bg-[#18191e]/88 text-[#c1c2c5] overflow-hidden">
+    <div className="relative flex flex-col h-screen bg-app-bg/90 text-fg overflow-hidden">
       {/* Full-screen overlays */}
       {configProfile && (
         <ConfigViewer profile={configProfile} onClose={() => setConfigProfile(null)} />
@@ -169,15 +169,14 @@ export default function App() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto min-h-0">
           {showSetupGuide ? (
-            /* Colima not installed — show setup guide */
             <SetupGuide />
           ) : (
-            <div className="px-3 py-3 space-y-2.5">
+            <div className="px-3 py-3 space-y-3">
               {/* Instances tab */}
               {activeTab === "instances" && (
                 <>
                   {isLoading && instances.length === 0 ? (
-                    <p className="text-center text-[11px] text-[#555] pt-8">Loading…</p>
+                    <p className="text-center text-sm text-fg-faint pt-8">Loading...</p>
                   ) : instances.length === 0 ? (
                     <EmptyState onNewInstance={openNewInstance} />
                   ) : (
@@ -242,13 +241,13 @@ export default function App() {
 
 function EmptyState({ onNewInstance }: { onNewInstance: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center h-36 gap-3">
-      <p className="text-[11px] text-[#3a3b40]">No Colima instances found</p>
+    <div className="flex flex-col items-center justify-center h-44 gap-4">
+      <p className="text-sm text-fg-faint">No Colima instances found</p>
       <button
         onClick={onNewInstance}
-        className="flex items-center gap-1.5 rounded-xl bg-blue-500/15 px-3.5 py-2 text-[11px] text-blue-400 hover:bg-blue-500/25 transition-all"
+        className="flex items-center gap-2 rounded-xl bg-blue-500/15 px-4 py-2.5 text-sm font-medium text-blue-400 hover:bg-blue-500/25 transition-all"
       >
-        <Plus size={12} />
+        <Plus size={14} />
         Create your first instance
       </button>
     </div>
@@ -257,9 +256,9 @@ function EmptyState({ onNewInstance }: { onNewInstance: () => void }) {
 
 function DockerEmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center h-36 gap-2">
-      <p className="text-[11px] text-[#3a3b40]">No Docker Desktop context found</p>
-      <p className="text-[10px] text-[#2e2f35]">
+    <div className="flex flex-col items-center justify-center h-44 gap-2">
+      <p className="text-sm text-fg-faint">No Docker Desktop context found</p>
+      <p className="text-xs text-fg-faint">
         Start Docker Desktop to see containers here
       </p>
     </div>

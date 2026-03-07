@@ -11,7 +11,6 @@ import {
 import { cn } from "../lib/utils";
 import { useColimaStore } from "../store";
 
-// Model registries supported by colima model run
 const REGISTRY_PREFIXES = [
   { label: "HuggingFace (default)", value: "hf://", example: "hf://tinyllama" },
   { label: "Ollama", value: "ollama://", example: "ollama://tinyllama" },
@@ -38,7 +37,6 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
 
   const handleOpen = async () => {
     if (!open) {
-      // Load vm types for running instances
       const types: Record<string, string> = {};
       await Promise.all(
         runningInstances.map(async (inst) => {
@@ -87,30 +85,30 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
   };
 
   return (
-    <div className="rounded-xl border border-white/[0.09] bg-white/[0.04] overflow-hidden">
+    <div className="rounded-xl border border-border bg-white/[0.03] overflow-hidden">
       <button
         onClick={handleOpen}
-        className="w-full flex items-center justify-between px-4 py-3 text-[11px] hover:bg-white/4 transition-all"
+        className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/[0.03] transition-all"
       >
-        <div className="flex items-center gap-2">
-          <span className="text-[#777]">
-            {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        <div className="flex items-center gap-2.5">
+          <span className="text-fg-muted">
+            {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </span>
-          <Cpu size={11} className="text-[#777]" />
-          <span className="text-[#aaaaad] font-medium">AI Models</span>
-          <span className="text-[10px] text-[#666] font-mono">colima model</span>
+          <Cpu size={13} className="text-fg-muted" />
+          <span className="text-fg-secondary font-medium">AI Models</span>
+          <span className="text-xs text-fg-muted font-mono">colima model</span>
         </div>
-        <span className="text-[10px] text-purple-400/70 bg-purple-500/10 rounded-full px-2 py-0.5">
+        <span className="text-xs text-purple-400/70 bg-purple-500/10 rounded-full px-2.5 py-1">
           krunkit
         </span>
       </button>
 
       {open && (
-        <div className="border-t border-white/6 px-4 pb-4 pt-3 space-y-3">
+        <div className="border-t border-border-subtle px-4 pb-4 pt-3 space-y-3">
           {/* Info banner */}
-          <div className="flex items-start gap-2 rounded-lg bg-purple-500/8 border border-purple-500/15 px-3 py-2.5">
-            <AlertTriangle size={11} className="text-purple-400/80 mt-0.5 flex-shrink-0" />
-            <p className="text-[10.5px] text-purple-300/70 leading-relaxed">
+          <div className="flex items-start gap-2.5 rounded-lg bg-purple-500/[0.06] border border-purple-500/15 px-3.5 py-3">
+            <AlertTriangle size={13} className="text-purple-400/80 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-purple-300/70 leading-relaxed">
               Requires Apple Silicon + macOS 13+. "Setup" will start a{" "}
               <span className="font-mono text-purple-300/90">krunkit</span> instance then run{" "}
               <span className="font-mono text-purple-300/90">colima model setup</span> automatically.
@@ -119,12 +117,12 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
 
           {/* Profile selector */}
           {runningInstances.length > 1 && (
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-[#777]">Profile</span>
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs text-fg-muted">Profile</span>
               <select
                 value={selectedProfile}
                 onChange={(e) => setSelectedProfile(e.target.value)}
-                className="flex-1 bg-white/6 border border-white/8 rounded-md px-2 py-1 text-[11px] text-[#c1c2c5] outline-none"
+                className="flex-1 bg-white/[0.04] border border-border rounded-lg px-2.5 py-1.5 text-sm text-fg outline-none"
               >
                 {runningInstances.map((i) => (
                   <option key={i.profile} value={i.profile}>
@@ -138,14 +136,14 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
 
           {/* krunkit status */}
           {runningInstances.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <span
                 className={cn(
-                  "h-1.5 w-1.5 rounded-full",
+                  "h-2 w-2 rounded-full",
                   isKrunkit ? "bg-green-500" : "bg-yellow-500/70"
                 )}
               />
-              <span className="text-[10.5px] text-[#888]">
+              <span className="text-xs text-fg-muted">
                 {isKrunkit
                   ? "krunkit detected — GPU acceleration available"
                   : `VM type: ${vmType[selectedProfile] || "qemu/vz"} — restart with krunkit for GPU`}
@@ -157,39 +155,39 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
           <button
             onClick={handleSetup}
             disabled={busy !== null || runningInstances.length === 0}
-            className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-white/8 bg-white/5 py-2 text-[11px] text-[#aaaaad] hover:bg-white/8 hover:text-[#c1c2c5] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Settings size={11} className={cn(busy === "setup" && "animate-spin")} />
-            {busy === "setup" ? "Setting up…" : "colima model setup"}
+            <Settings size={13} className={cn(busy === "setup" && "animate-spin")} />
+            {busy === "setup" ? "Setting up..." : "colima model setup"}
           </button>
 
           {/* Run model */}
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <div className="flex gap-2">
               <input
                 value={modelInput}
                 onChange={(e) => setModelInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleRun()}
                 placeholder="gemma3  ·  hf://tinyllama  ·  ollama://mistral"
-                className="flex-1 bg-white/6 border border-white/8 rounded-md px-2.5 py-1.5 text-[11px] text-[#c1c2c5] placeholder:text-[#444] outline-none focus:border-purple-500/40 transition-colors"
+                className="flex-1 bg-white/[0.04] border border-border rounded-lg px-3 py-2 text-sm text-fg placeholder:text-fg-faint outline-none focus:border-purple-500/40 transition-colors"
               />
               <button
                 onClick={handleRun}
                 disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0}
-                className="flex items-center gap-1.5 rounded-md bg-purple-500/20 px-3 py-1.5 text-[11px] text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 rounded-lg bg-purple-500/20 px-3.5 py-2 text-sm text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <Play size={10} />
-                {busy === "run" ? "Running…" : "Run"}
+                <Play size={12} />
+                {busy === "run" ? "Running..." : "Run"}
               </button>
             </div>
 
             {/* Quick examples */}
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {EXAMPLE_MODELS.map((m) => (
                 <button
                   key={m}
                   onClick={() => setModelInput(m)}
-                  className="text-[9.5px] font-mono rounded px-1.5 py-0.5 bg-white/5 text-[#666] hover:text-[#999] hover:bg-white/8 transition-all"
+                  className="text-xs font-mono rounded-md px-2 py-1 bg-white/[0.04] text-fg-muted hover:text-fg-secondary hover:bg-white/[0.07] transition-all"
                 >
                   {m}
                 </button>
@@ -198,27 +196,27 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
           </div>
 
           {/* Registry guide */}
-          <div className="rounded-lg bg-white/3 border border-white/6 px-3 py-2 space-y-1">
-            <p className="text-[10px] text-[#666] font-medium mb-1.5">Supported registries</p>
+          <div className="rounded-lg bg-white/[0.02] border border-border-subtle px-3.5 py-2.5 space-y-1.5">
+            <p className="text-xs text-fg-muted font-medium mb-2">Supported registries</p>
             {REGISTRY_PREFIXES.map((r) => (
-              <div key={r.label} className="flex items-center gap-2">
-                <span className="text-[9.5px] font-mono text-purple-400/70 w-20 flex-shrink-0">
+              <div key={r.label} className="flex items-center gap-2.5">
+                <span className="text-xs font-mono text-purple-400/70 w-20 flex-shrink-0">
                   {r.value || "bare"}
                 </span>
-                <span className="text-[9.5px] text-[#777]">{r.label}</span>
-                <span className="text-[9.5px] font-mono text-[#666] ml-auto">{r.example}</span>
+                <span className="text-xs text-fg-muted">{r.label}</span>
+                <span className="text-xs font-mono text-fg-faint ml-auto">{r.example}</span>
               </div>
             ))}
           </div>
 
           {/* Error */}
           {error && (
-            <p className="text-[10.5px] text-red-400/80 leading-snug">{error}</p>
+            <p className="text-xs text-red-400/80 leading-snug">{error}</p>
           )}
 
           {/* No running instances */}
           {runningInstances.length === 0 && (
-            <p className="text-[10.5px] text-[#666] italic">
+            <p className="text-xs text-fg-muted italic">
               Start a Colima instance first to use AI models.
             </p>
           )}

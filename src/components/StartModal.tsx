@@ -6,7 +6,7 @@ import type { StartOptions } from "../types";
 interface StartModalProps {
   initialProfile?: string;
   onClose: () => void;
-  onStarted: () => void; // called so parent can open the log drawer
+  onStarted: () => void;
 }
 
 export function StartModal({ initialProfile, onClose, onStarted }: StartModalProps) {
@@ -48,15 +48,15 @@ export function StartModal({ initialProfile, onClose, onStarted }: StartModalPro
 
   return (
     <div className="absolute inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm rounded-2xl">
-      <div className="w-full bg-[#1e1f23] border border-white/10 rounded-t-2xl p-4 shadow-2xl">
+      <div className="w-full bg-panel-alt border border-white/10 rounded-t-2xl p-5 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-[#e0e0e0]">Start Instance</h2>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-fg">Start Instance</h2>
           <button
             onClick={onClose}
-            className="text-[#555] hover:text-[#909296] transition-colors"
+            className="text-fg-faint hover:text-fg-secondary transition-colors"
           >
-            <X size={14} />
+            <X size={16} />
           </button>
         </div>
 
@@ -68,7 +68,7 @@ export function StartModal({ initialProfile, onClose, onStarted }: StartModalPro
               value={profile}
               onChange={(e) => setProfile(e.target.value)}
               placeholder="default"
-              className="w-full rounded-lg bg-white/8 border border-white/8 px-3 py-1.5 text-[12px] text-[#c1c2c5] placeholder:text-[#444] outline-none focus:border-blue-500/50 focus:bg-white/10 transition-all"
+              className="w-full rounded-lg bg-white/[0.06] border border-border px-3 py-2 text-sm text-fg placeholder:text-fg-faint outline-none focus:border-blue-500/50 focus:bg-white/[0.08] transition-all"
             />
           </Field>
 
@@ -130,29 +130,29 @@ export function StartModal({ initialProfile, onClose, onStarted }: StartModalPro
           {/* Rosetta (VZ only) */}
           {vmType === "vz" && (
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-[#666]">Rosetta (x86 emulation)</span>
+              <span className="text-sm text-fg-muted">Rosetta (x86 emulation)</span>
               <Toggle value={rosetta} onChange={setRosetta} />
             </div>
           )}
 
           {error && (
-            <p className="text-[11px] text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
+            <p className="text-sm text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
               {error}
             </p>
           )}
 
           {/* Actions */}
-          <div className="flex gap-2 pt-1">
+          <div className="flex gap-2.5 pt-1">
             <button
               onClick={onClose}
-              className="flex-1 rounded-lg bg-white/8 py-2 text-[12px] text-[#909296] hover:bg-white/12 hover:text-[#c1c2c5] transition-all"
+              className="flex-1 rounded-lg bg-white/[0.06] py-2.5 text-sm text-fg-secondary hover:bg-white/[0.1] hover:text-fg transition-all"
             >
               Cancel
             </button>
             <button
               onClick={handleStart}
               disabled={busy || !profile.trim()}
-              className="flex-1 rounded-lg bg-blue-500 py-2 text-[12px] font-medium text-white hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="flex-1 rounded-lg bg-blue-500 py-2.5 text-sm font-medium text-white hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               Start
             </button>
@@ -165,8 +165,8 @@ export function StartModal({ initialProfile, onClose, onStarted }: StartModalPro
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <label className="text-[11px] text-[#666] font-medium uppercase tracking-wide">
+    <div className="space-y-2">
+      <label className="text-xs text-fg-muted font-medium uppercase tracking-wide">
         {label}
       </label>
       {children}
@@ -186,12 +186,12 @@ interface SliderFieldProps {
 
 function SliderField({ label, value, min, max, step = 1, unit, onChange }: SliderFieldProps) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <label className="text-[11px] text-[#666] font-medium uppercase tracking-wide">
+        <label className="text-xs text-fg-muted font-medium uppercase tracking-wide">
           {label}
         </label>
-        <span className="text-[11px] text-[#c1c2c5] font-mono">
+        <span className="text-sm text-fg font-mono">
           {value} {unit}
         </span>
       </div>
@@ -202,9 +202,9 @@ function SliderField({ label, value, min, max, step = 1, unit, onChange }: Slide
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-1 rounded-full appearance-none bg-white/10 accent-blue-500 cursor-pointer"
+        className="w-full cursor-pointer"
       />
-      <div className="flex justify-between text-[10px] text-[#444]">
+      <div className="flex justify-between text-xs text-fg-faint">
         <span>{min}</span>
         <span>{max}</span>
       </div>
@@ -220,15 +220,15 @@ interface SegmentedControlProps {
 
 function SegmentedControl({ options, value, onChange }: SegmentedControlProps) {
   return (
-    <div className="flex rounded-lg bg-white/6 border border-white/8 p-0.5">
+    <div className="flex rounded-lg bg-white/[0.04] border border-border p-0.5">
       {options.map((opt) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
-          className={`flex-1 rounded-md py-1 text-[11px] font-medium transition-all ${
+          className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-all ${
             value === opt.value
-              ? "bg-white/15 text-[#e0e0e0] shadow-sm"
-              : "text-[#666] hover:text-[#909296]"
+              ? "bg-white/15 text-fg shadow-sm"
+              : "text-fg-muted hover:text-fg-secondary"
           }`}
         >
           {opt.label}
@@ -242,13 +242,13 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   return (
     <button
       onClick={() => onChange(!value)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+      className={`relative inline-flex h-6 w-10 items-center rounded-full transition-colors ${
         value ? "bg-blue-500" : "bg-white/15"
       }`}
     >
       <span
-        className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-          value ? "translate-x-4" : "translate-x-0.5"
+        className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+          value ? "translate-x-5" : "translate-x-0.5"
         }`}
       />
     </button>

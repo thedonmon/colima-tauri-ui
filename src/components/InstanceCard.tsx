@@ -62,7 +62,6 @@ export function InstanceCard({
   const dockerContext =
     instance.profile === "default" ? "colima" : `colima-${instance.profile}`;
 
-  // Initial open: shows loading indicator when there's no data yet
   const fetchContainers = () => {
     if (!isRunning) return;
     setContainersLoading(true);
@@ -90,7 +89,6 @@ export function InstanceCard({
       .finally(() => setVolumesLoading(false));
   };
 
-  // Background refresh: no loading indicator — data swaps in place silently
   const silentRefresh = () => {
     if (!isRunning) return;
     if (showContainers)
@@ -137,13 +135,11 @@ export function InstanceCard({
     }
   };
 
-  // After a VM command finishes, silently refresh open sections
   useEffect(() => {
     if (!isThisRunning && isRunning) silentRefresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isThisRunning]);
 
-  // Docker event fired → silently refresh whichever sections are open
   useEffect(() => {
     if (tick === 0 || !isRunning) return;
     silentRefresh();
@@ -177,18 +173,18 @@ export function InstanceCard({
         "rounded-xl border overflow-hidden transition-all",
         isThisRunning
           ? "border-blue-500/30 bg-blue-500/[0.06]"
-          : "border-white/[0.09] bg-white/[0.05]"
+          : "border-border bg-white/[0.04]"
       )}
     >
       {/* Card body */}
-      <div className="px-4 pt-3.5 pb-3">
+      <div className="px-4 pt-4 pb-3">
         {/* Header row */}
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-semibold text-[13px] text-[#e2e3e6] truncate">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="font-semibold text-[15px] text-fg truncate">
               {instance.profile}
             </span>
-            <span className="text-[10.5px] text-[#777] bg-white/[0.05] rounded px-1.5 py-0.5 font-mono">
+            <span className="text-xs text-fg-muted bg-white/[0.06] rounded-md px-2 py-0.5 font-mono">
               {instance.runtime}
             </span>
           </div>
@@ -196,57 +192,57 @@ export function InstanceCard({
         </div>
 
         {/* Specs row */}
-        <div className="flex items-center gap-3.5 mb-3.5 text-[10.5px] text-[#666]">
-          <span className="flex items-center gap-1">
-            <Cpu size={10} className="text-[#5a5b60]" />
+        <div className="flex items-center gap-4 mb-4 text-xs text-fg-muted">
+          <span className="flex items-center gap-1.5">
+            <Cpu size={12} className="text-icon" />
             {instance.cpus}
           </span>
-          <span className="flex items-center gap-1">
-            <MemoryStick size={10} className="text-[#5a5b60]" />
+          <span className="flex items-center gap-1.5">
+            <MemoryStick size={12} className="text-icon" />
             {instance.memory}
           </span>
-          <span className="flex items-center gap-1">
-            <HardDrive size={10} className="text-[#5a5b60]" />
+          <span className="flex items-center gap-1.5">
+            <HardDrive size={12} className="text-icon" />
             {instance.disk}
           </span>
-          <span className="text-[#666]">{instance.arch}</span>
+          <span className="text-fg-muted">{instance.arch}</span>
           {instance.address && instance.address !== "—" && (
-            <span className="text-[#666] font-mono text-[9.5px]">{instance.address}</span>
+            <span className="text-fg-muted font-mono">{instance.address}</span>
           )}
         </div>
 
         {/* Actions */}
         {showConfirmDelete ? (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-red-400/80 flex-1">
+            <span className="text-sm text-red-400/80 flex-1">
               Delete <span className="font-medium">{instance.profile}</span>?
             </span>
             <button
               onClick={() => setShowConfirmDelete(false)}
-              className="text-[10.5px] px-2.5 py-1 rounded-lg bg-white/[0.06] text-[#777] hover:text-[#b0b1b4] transition-all"
+              className="text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] text-fg-muted hover:text-fg-secondary transition-all"
             >
               Cancel
             </button>
             <button
               onClick={handleDelete}
-              className="text-[10.5px] px-2.5 py-1 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+              className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
             >
               Delete
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             {isRunning ? (
               <>
                 <ActionBtn
-                  icon={<Square size={10} />}
+                  icon={<Square size={12} />}
                   label="Stop"
                   onClick={handleStop}
                   disabled={isBusy}
                   variant="stop"
                 />
                 <ActionBtn
-                  icon={<RotateCcw size={10} />}
+                  icon={<RotateCcw size={12} />}
                   label="Restart"
                   onClick={handleRestart}
                   disabled={isBusy}
@@ -255,7 +251,7 @@ export function InstanceCard({
               </>
             ) : (
               <ActionBtn
-                icon={<Play size={10} />}
+                icon={<Play size={12} />}
                 label="Start"
                 onClick={() => onStart(instance.profile)}
                 disabled={isBusy}
@@ -263,7 +259,7 @@ export function InstanceCard({
               />
             )}
             <ActionBtn
-              icon={<FileText size={10} />}
+              icon={<FileText size={12} />}
               label="Config"
               onClick={() => onViewConfig(instance.profile)}
               disabled={false}
@@ -271,7 +267,7 @@ export function InstanceCard({
             />
             {isRunning && (
               <ActionBtn
-                icon={<Scissors size={10} />}
+                icon={<Scissors size={12} />}
                 label="Prune"
                 onClick={handlePrune}
                 disabled={isBusy}
@@ -280,7 +276,7 @@ export function InstanceCard({
             )}
             <div className="flex-1" />
             <ActionBtn
-              icon={<Trash2 size={10} />}
+              icon={<Trash2 size={12} />}
               label=""
               onClick={() => setShowConfirmDelete(true)}
               disabled={isBusy || isRunning}
@@ -291,9 +287,9 @@ export function InstanceCard({
         )}
 
         {isThisRunning && (
-          <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-blue-400/80">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
-            Running command…
+          <div className="mt-2.5 flex items-center gap-2 text-xs text-blue-400/80">
+            <span className="inline-block h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+            Running command...
           </div>
         )}
       </div>
@@ -301,16 +297,16 @@ export function InstanceCard({
       {/* Containers / Images / Volumes accordions */}
       {isRunning && (
         <>
-        <div className="border-t border-white/[0.06]">
-          <div className="flex items-center px-4 py-2">
+        <div className="border-t border-border-subtle">
+          <div className="flex items-center px-4 py-2.5">
             <button
               onClick={() => setShowContainers((v) => !v)}
-              className="flex items-center gap-1.5 text-[10.5px] text-[#666] hover:text-[#999] transition-all flex-1"
+              className="flex items-center gap-2 text-xs text-fg-muted hover:text-fg-secondary transition-all flex-1"
             >
-              {showContainers ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              {showContainers ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               <span>Containers</span>
               {containers.length > 0 && (
-                <span className="rounded-full bg-white/[0.08] px-1.5 py-px text-[9.5px] text-[#666]">
+                <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-xs text-fg-muted">
                   {containers.length}
                 </span>
               )}
@@ -318,10 +314,10 @@ export function InstanceCard({
             <button
               onClick={() => setShowStopped((v) => !v)}
               className={cn(
-                "text-[9.5px] px-1.5 py-0.5 rounded transition-all",
+                "text-xs px-2 py-1 rounded-md transition-all",
                 showStopped
-                  ? "bg-white/[0.08] text-[#888]"
-                  : "text-[#555] hover:text-[#777]"
+                  ? "bg-white/[0.08] text-fg-muted"
+                  : "text-fg-faint hover:text-fg-muted"
               )}
             >
               {showStopped ? "All" : "Running"}
@@ -340,11 +336,11 @@ export function InstanceCard({
             }
             const sortedGroups = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
             return (
-              <div className="px-4 pb-3.5 space-y-3">
+              <div className="px-4 pb-4 space-y-3">
                 {containersLoading && containers.length === 0 ? (
-                  <p className="text-[10.5px] text-[#555]">Loading…</p>
+                  <p className="text-xs text-fg-faint">Loading...</p>
                 ) : containers.length === 0 ? (
-                  <p className="text-[10.5px] text-[#666] italic">
+                  <p className="text-xs text-fg-muted italic">
                     {showStopped ? "No containers" : "No running containers"}
                   </p>
                 ) : (
@@ -357,14 +353,14 @@ export function InstanceCard({
                             onClick={() =>
                               setOpenGroups((prev) => ({ ...prev, [project]: !isOpen }))
                             }
-                            className="flex items-center gap-1 text-[9.5px] text-[#666] hover:text-[#999] w-full mb-1 transition-all"
+                            className="flex items-center gap-1.5 text-xs text-fg-muted hover:text-fg-secondary w-full mb-1.5 transition-all"
                           >
-                            {isOpen ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                            {isOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                             <span className="font-medium">{project}</span>
-                            <span className="ml-auto text-[#555]">{members.length}</span>
+                            <span className="ml-auto text-fg-faint">{members.length}</span>
                           </button>
                           {isOpen && (
-                            <div className="space-y-2 ml-3">
+                            <div className="space-y-2.5 ml-3">
                               {members.map((c) => (
                                 <ContainerRow
                                   key={c.id}
@@ -396,16 +392,16 @@ export function InstanceCard({
         </div>
 
         {/* Images accordion */}
-        <div className="border-t border-white/[0.06]">
-          <div className="flex items-center px-4 py-2">
+        <div className="border-t border-border-subtle">
+          <div className="flex items-center px-4 py-2.5">
             <button
               onClick={() => setShowImages((v) => !v)}
-              className="flex items-center gap-1.5 text-[10.5px] text-[#666] hover:text-[#999] transition-all flex-1"
+              className="flex items-center gap-2 text-xs text-fg-muted hover:text-fg-secondary transition-all flex-1"
             >
-              {showImages ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              {showImages ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               <span>Images</span>
               {images.length > 0 && (
-                <span className="rounded-full bg-white/[0.08] px-1.5 py-px text-[9.5px] text-[#666]">
+                <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-xs text-fg-muted">
                   {images.length}
                 </span>
               )}
@@ -414,20 +410,20 @@ export function InstanceCard({
               <button
                 onClick={handlePruneImages}
                 disabled={pruningImages}
-                className="text-[9.5px] text-amber-400/70 hover:text-amber-400 transition-all disabled:opacity-40"
+                className="text-xs text-amber-400/70 hover:text-amber-400 transition-all disabled:opacity-40"
                 title="Remove dangling images"
               >
-                {pruningImages ? "Pruning…" : "Prune dangling"}
+                {pruningImages ? "Pruning..." : "Prune dangling"}
               </button>
             )}
           </div>
 
           {showImages && (
-            <div className="px-4 pb-3.5 space-y-2.5">
+            <div className="px-4 pb-4 space-y-3">
               {imagesLoading && images.length === 0 ? (
-                <p className="text-[10.5px] text-[#555]">Loading…</p>
+                <p className="text-xs text-fg-faint">Loading...</p>
               ) : images.length === 0 ? (
-                <p className="text-[10.5px] text-[#666] italic">No images</p>
+                <p className="text-xs text-fg-muted italic">No images</p>
               ) : (
                 images.map((img) => (
                   <ImageRow
@@ -443,16 +439,16 @@ export function InstanceCard({
         </div>
 
         {/* Volumes accordion */}
-        <div className="border-t border-white/[0.06]">
-          <div className="flex items-center px-4 py-2">
+        <div className="border-t border-border-subtle">
+          <div className="flex items-center px-4 py-2.5">
             <button
               onClick={() => setShowVolumes((v) => !v)}
-              className="flex items-center gap-1.5 text-[10.5px] text-[#666] hover:text-[#999] transition-all flex-1"
+              className="flex items-center gap-2 text-xs text-fg-muted hover:text-fg-secondary transition-all flex-1"
             >
-              {showVolumes ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              {showVolumes ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               <span>Volumes</span>
               {volumes.length > 0 && (
-                <span className="rounded-full bg-white/[0.08] px-1.5 py-px text-[9.5px] text-[#666]">
+                <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-xs text-fg-muted">
                   {volumes.length}
                 </span>
               )}
@@ -461,20 +457,20 @@ export function InstanceCard({
               <button
                 onClick={handlePruneVolumes}
                 disabled={pruningVolumes}
-                className="text-[9.5px] text-amber-400/70 hover:text-amber-400 transition-all disabled:opacity-40"
+                className="text-xs text-amber-400/70 hover:text-amber-400 transition-all disabled:opacity-40"
                 title="Remove volumes not used by any container"
               >
-                {pruningVolumes ? "Pruning…" : "Prune unused"}
+                {pruningVolumes ? "Pruning..." : "Prune unused"}
               </button>
             )}
           </div>
 
           {showVolumes && (
-            <div className="px-4 pb-3.5 space-y-2.5">
+            <div className="px-4 pb-4 space-y-3">
               {volumesLoading && volumes.length === 0 ? (
-                <p className="text-[10.5px] text-[#555]">Loading…</p>
+                <p className="text-xs text-fg-faint">Loading...</p>
               ) : volumes.length === 0 ? (
-                <p className="text-[10.5px] text-[#666] italic">No volumes</p>
+                <p className="text-xs text-fg-muted italic">No volumes</p>
               ) : (
                 volumes.map((vol) => (
                   <VolumeRow
@@ -512,14 +508,14 @@ function ActionBtn({ icon, label, onClick, disabled, variant, title }: ActionBtn
       disabled={disabled}
       title={title}
       className={cn(
-        "flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10.5px] font-medium transition-all",
+        "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
         "disabled:opacity-35 disabled:cursor-not-allowed",
         variant === "start" && "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25",
         variant === "stop" && "bg-red-500/15 text-red-400 hover:bg-red-500/25",
         variant === "restart" && "bg-blue-500/15 text-blue-400 hover:bg-blue-500/25",
         variant === "warn" && "bg-amber-500/12 text-amber-400 hover:bg-amber-500/20",
-        variant === "default" && "bg-white/[0.06] text-[#888] hover:bg-white/[0.1] hover:text-[#b0b1b4]",
-        variant === "danger" && "bg-transparent text-[#555] hover:bg-red-500/15 hover:text-red-400"
+        variant === "default" && "bg-white/[0.06] text-fg-muted hover:bg-white/[0.1] hover:text-fg-secondary",
+        variant === "danger" && "bg-transparent text-fg-faint hover:bg-red-500/15 hover:text-red-400"
       )}
     >
       {icon}

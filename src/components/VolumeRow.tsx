@@ -28,59 +28,58 @@ export function VolumeRow({ volume, profile, onRefresh }: VolumeRowProps) {
     }
   };
 
-  // Shorten mountpoint for display — just show the last segment
   const shortMount = volume.mountpoint
     ? volume.mountpoint.split("/").slice(-2).join("/")
     : "";
 
   return (
-    <div className="flex items-center gap-2.5 group">
-      <Database size={10} className="text-[#5a5b60] flex-shrink-0" />
+    <div className="flex items-center gap-3 group">
+      <Database size={12} className="text-icon flex-shrink-0" />
 
       <div className="flex-1 min-w-0">
-        <span className="text-[10.5px] font-medium text-[#c0c1c4] truncate block">
+        <span className="text-sm font-medium text-fg truncate block">
           {volume.name}
         </span>
         <div className="flex items-center gap-2 mt-0.5">
           {volume.driver !== "local" && (
             <>
-              <span className="text-[9.5px] text-[#777] font-mono">{volume.driver}</span>
-              <span className="text-[#555]">·</span>
+              <span className="text-xs text-fg-muted font-mono">{volume.driver}</span>
+              <span className="text-fg-faint">·</span>
             </>
           )}
           {shortMount && (
-            <span className="text-[9px] text-[#666] font-mono truncate" title={volume.mountpoint}>
-              …/{shortMount}
+            <span className="text-xs text-fg-muted font-mono truncate" title={volume.mountpoint}>
+              .../{shortMount}
             </span>
           )}
         </div>
-        {error && <p className="text-[9.5px] text-red-400/70 mt-0.5 leading-snug">{error}</p>}
+        {error && <p className="text-xs text-red-400/70 mt-1 leading-snug">{error}</p>}
       </div>
 
       {/* Remove button */}
       {confirming ? (
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
             onClick={() => setConfirming(false)}
-            className="text-[9.5px] px-1.5 py-0.5 rounded bg-white/[0.06] text-[#666] hover:text-[#999] transition-all"
+            className="text-xs px-2 py-1 rounded-md bg-white/[0.06] text-fg-muted hover:text-fg-secondary transition-all"
           >
             Cancel
           </button>
           <button
             onClick={handleRemove}
             disabled={busy}
-            className="text-[9.5px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all disabled:opacity-40"
+            className="text-xs px-2 py-1 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all disabled:opacity-40"
           >
-            {busy ? "…" : "Remove"}
+            {busy ? "..." : "Remove"}
           </button>
         </div>
       ) : (
         <button
           onClick={() => setConfirming(true)}
-          className="opacity-0 group-hover:opacity-100 p-1 rounded text-[#444] hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
+          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md text-fg-faint hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
           title="Remove volume"
         >
-          <Trash2 size={10} />
+          <Trash2 size={12} />
         </button>
       )}
     </div>
