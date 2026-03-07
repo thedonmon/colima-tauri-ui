@@ -1,6 +1,12 @@
-# Colima Manager
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" width="128" alt="Colima Manager" />
+</p>
 
-A lightweight macOS menu bar app for managing [Colima](https://github.com/abiosoft/colima) virtual machines, Docker Desktop containers, and AI models — without touching the terminal.
+<h1 align="center">Colima Manager</h1>
+
+<p align="center">
+  A lightweight macOS menu bar app for managing <a href="https://github.com/abiosoft/colima">Colima</a> virtual machines, Docker containers, and AI models — without touching the terminal.
+</p>
 
 ---
 
@@ -11,12 +17,18 @@ A lightweight macOS menu bar app for managing [Colima](https://github.com/abioso
 ## Features
 
 - **VM Management** — Start, stop, restart, and delete Colima instances with one click
-- **Live container view** — Expand any running instance to see its Docker containers; stop, pause, restart, or stream logs inline
+- **Live resource monitoring** — Real-time CPU, memory, and disk usage for running VMs
+- **Container management** — View, start, stop, pause, restart, exec, and inspect containers
+- **Container stats** — Per-container CPU, memory, and network I/O
+- **Image management** — List, pull, remove, and prune Docker images
+- **Volume management** — List, remove, and prune Docker volumes
 - **Docker Desktop support** — View and manage containers from non-Colima Docker contexts (e.g. `desktop-linux`)
-- **AI Models tab** — Run `colima model` commands with GPU acceleration via krunkit; setup automatically starts the right VM type first
+- **AI Models tab** — Run `colima model` commands with GPU acceleration via krunkit
+- **Quick tray actions** — Start, stop, and restart instances directly from the menu bar
+- **Auto-update checker** — Get notified when a new version is available
+- **Settings** — Configurable default VM presets, auto-hide, notifications
 - **Log drawer** — Streams real-time output for any long-running command
 - **Config viewer** — Inspect a profile's `colima.yaml` without leaving the app
-- **Auto-hide** — Window hides on focus loss; stays on top for quick access
 - **Onboarding** — Detects if Colima isn't installed and shows step-by-step setup instructions
 
 ---
@@ -103,6 +115,6 @@ npm run tauri build
 
 ## Notes
 
-- The app uses `alwaysOnTop: true` and hides on focus loss — designed to feel like a native menu bar utility
 - Colima profiles map to Docker contexts: `default` → `colima`, `myprofile` → `colima-myprofile`
 - The log drawer streams stdout/stderr in real time via Tauri events
+- Container exec opens a new Terminal.app window with an interactive shell
