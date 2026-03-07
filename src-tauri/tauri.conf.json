@@ -23,12 +23,9 @@
         "hiddenTitle": true,
         "trafficLightPosition": { "x": 12, "y": 16 },
         "transparent": true,
-        "visible": false,
+        "visible": true,
         "resizable": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "shadow": true,
-        "visibleOnAllWorkspaces": true
+        "shadow": true
       }
     ],
     "security": {

@@ -79,3 +79,29 @@ export interface DockerEvent {
   actorName: string;
 }
 
+export interface VmStats {
+  cpuUsage: string;
+  memoryUsed: string;
+  memoryTotal: string;
+  diskUsed: string;
+  diskTotal: string;
+}
+
+export interface ContainerStats {
+  id: string;
+  name: string;
+  cpuPercent: string;
+  memoryUsage: string;
+  memoryLimit: string;
+  netIo: string;
+  blockIo: string;
+}
+
+export interface UpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  releaseUrl: string;
+  releaseNotes: string;
+}
+

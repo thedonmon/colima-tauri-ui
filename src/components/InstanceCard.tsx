@@ -18,6 +18,9 @@ import { StatusBadge } from "./StatusBadge";
 import { ContainerRow } from "./ContainerRow";
 import { ImageRow } from "./ImageRow";
 import { VolumeRow } from "./VolumeRow";
+import { VmStatsBar } from "./VmStatsBar";
+import { ContainerStatsPanel } from "./ContainerStatsRow";
+import { ImagePull } from "./ImagePull";
 import { cn } from "../lib/utils";
 import type { ColimaInstance, DockerContainer, DockerImage, DockerVolume, ContainerLogsTarget } from "../types";
 
@@ -27,6 +30,7 @@ interface InstanceCardProps {
   onViewConfig: (profile: string) => void;
   onViewLogs: () => void;
   onContainerLogsOpen: (target: ContainerLogsTarget) => void;
+  onInspectContainer: (profile: string, containerId: string, containerName: string) => void;
 }
 
 export function InstanceCard({
@@ -35,6 +39,7 @@ export function InstanceCard({
   onViewConfig,
   onViewLogs,
   onContainerLogsOpen,
+  onInspectContainer,
 }: InstanceCardProps) {
   const { stopInstance, restartInstance, deleteInstance, pruneInstance, isRunningCommand, activeProfile, dockerRefreshTick } =
     useColimaStore();
@@ -294,6 +299,9 @@ export function InstanceCard({
         )}
       </div>
 
+      {/* VM Stats */}
+      {isRunning && <VmStatsBar profile={instance.profile} />}
+
       {/* Containers / Images / Volumes accordions */}
       {isRunning && (
         <>
@@ -366,8 +374,10 @@ export function InstanceCard({
                                   key={c.id}
                                   container={c}
                                   context={dockerContext}
+                                  profile={instance.profile}
                                   onLogsOpen={onContainerLogsOpen}
                                   onRefresh={fetchContainers}
+                                  onInspect={onInspectContainer}
                                 />
                               ))}
                             </div>
@@ -380,11 +390,18 @@ export function InstanceCard({
                         key={c.id}
                         container={c}
                         context={dockerContext}
+                        profile={instance.profile}
                         onLogsOpen={onContainerLogsOpen}
                         onRefresh={fetchContainers}
+                        onInspect={onInspectContainer}
                       />
                     ))}
                   </>
+                )}
+
+                {/* Container resource stats */}
+                {containers.length > 0 && (
+                  <ContainerStatsPanel profile={instance.profile} />
                 )}
               </div>
             );
@@ -420,6 +437,11 @@ export function InstanceCard({
 
           {showImages && (
             <div className="px-4 pb-4 space-y-3">
+              <ImagePull
+                profile={instance.profile}
+                onPulled={fetchImages}
+                onViewLogs={onViewLogs}
+              />
               {imagesLoading && images.length === 0 ? (
                 <p className="text-xs text-fg-faint">Loading...</p>
               ) : images.length === 0 ? (

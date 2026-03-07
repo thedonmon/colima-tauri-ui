@@ -1,19 +1,21 @@
 import { useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Play, Square, RotateCcw, Pause, Play as Resume, ScrollText, Trash2 } from "lucide-react";
+import { Play, Square, RotateCcw, Pause, Play as Resume, ScrollText, Trash2, Terminal, Search } from "lucide-react";
 import { cn } from "../lib/utils";
 import type { DockerContainer, ContainerLogsTarget } from "../types";
 
 export interface ContainerRowProps {
   container: DockerContainer;
   context: string;
+  profile?: string;
   onLogsOpen: (target: ContainerLogsTarget) => void;
   onRefresh: () => void;
+  onInspect?: (profile: string, containerId: string, containerName: string) => void;
 }
 
 type Action = "start" | "stop" | "restart" | "pause" | "unpause" | "rm";
 
-export function ContainerRow({ container, context, onLogsOpen, onRefresh }: ContainerRowProps) {
+export function ContainerRow({ container, context, profile, onLogsOpen, onRefresh, onInspect }: ContainerRowProps) {
   const [busyAction, setBusyAction] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -151,6 +153,26 @@ export function ContainerRow({ container, context, onLogsOpen, onRefresh }: Cont
               disabled={false}
               variant="default"
             />
+            {up && profile && (
+              <ContainerBtn
+                icon={<Terminal size={11} />}
+                label="Exec"
+                onClick={() => invoke("container_exec", { profile, containerId: container.id })}
+                active={false}
+                disabled={false}
+                variant="default"
+              />
+            )}
+            {profile && onInspect && (
+              <ContainerBtn
+                icon={<Search size={11} />}
+                label="Inspect"
+                onClick={() => onInspect(profile, container.id, container.names || container.id)}
+                active={false}
+                disabled={false}
+                variant="default"
+              />
+            )}
           </div>
 
           {error && (

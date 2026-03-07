@@ -1,35 +1,104 @@
 mod commands;
 
+use std::sync::Mutex;
+
 use tauri::{
     image::Image as TauriImage,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, RunEvent,
+    Listener, Manager, RunEvent,
 };
 
-/// Helper: show the main window and switch to Regular activation policy
+/// Shared state to track the tray icon ID so we can update its menu later.
+struct TrayState {
+    tray_id: String,
+}
+
+/// Rebuild the tray right-click menu with current instance actions.
+fn rebuild_tray_menu(app: &tauri::AppHandle, instances: &[commands::ColimaInstance]) {
+    let tray_state = app.state::<Mutex<TrayState>>();
+    let tray_id = tray_state.lock().unwrap().tray_id.clone();
+
+    let Some(tray) = app.tray_by_id(&tray_id) else { return };
+
+    let mut builder = MenuBuilder::new(app);
+
+    // Show / Hide
+    if let Ok(item) = MenuItemBuilder::with_id("show-hide", "Show / Hide").build(app) {
+        builder = builder.item(&item);
+    }
+    builder = builder.separator();
+
+    // Instance actions
+    for inst in instances {
+        let is_running = inst.status.eq_ignore_ascii_case("running");
+        let label = if is_running {
+            format!("{} (Running)", inst.profile)
+        } else {
+            format!("{} (Stopped)", inst.profile)
+        };
+
+        // Section header (disabled item)
+        if let Ok(item) = MenuItemBuilder::with_id(format!("header-{}", inst.profile), &label)
+            .enabled(false)
+            .build(app)
+        {
+            builder = builder.item(&item);
+        }
+
+        if is_running {
+            if let Ok(item) = MenuItemBuilder::with_id(
+                format!("stop-{}", inst.profile),
+                format!("  Stop {}", inst.profile),
+            )
+            .build(app)
+            {
+                builder = builder.item(&item);
+            }
+            if let Ok(item) = MenuItemBuilder::with_id(
+                format!("restart-{}", inst.profile),
+                format!("  Restart {}", inst.profile),
+            )
+            .build(app)
+            {
+                builder = builder.item(&item);
+            }
+        } else {
+            if let Ok(item) = MenuItemBuilder::with_id(
+                format!("start-{}", inst.profile),
+                format!("  Start {}", inst.profile),
+            )
+            .build(app)
+            {
+                builder = builder.item(&item);
+            }
+        }
+        builder = builder.separator();
+    }
+
+    // Quit
+    if let Ok(item) = MenuItemBuilder::with_id("quit", "Quit Colima Manager").build(app) {
+        builder = builder.item(&item);
+    }
+
+    if let Ok(menu) = builder.build() {
+        let _ = tray.set_menu(Some(menu));
+    }
+}
+
+/// Helper: show the main window
 fn show_window(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
-        #[cfg(target_os = "macos")]
-        {
-            use tauri::ActivationPolicy;
-            let _ = app.set_activation_policy(ActivationPolicy::Regular);
-        }
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();
     }
 }
 
-/// Helper: hide the main window and switch to Accessory activation policy
+/// Helper: hide the main window (keeps Dock icon & Cmd+Tab entry)
 fn hide_window(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.hide();
-        #[cfg(target_os = "macos")]
-        {
-            use tauri::ActivationPolicy;
-            let _ = app.set_activation_policy(ActivationPolicy::Accessory);
-        }
     }
 }
 
@@ -80,15 +149,14 @@ pub fn run() {
             commands::start_colima_poller,
             commands::load_settings,
             commands::save_settings,
+            commands::get_vm_stats,
+            commands::get_container_stats,
+            commands::container_exec,
+            commands::pull_image,
+            commands::inspect_container,
+            commands::check_for_updates,
         ])
         .setup(|app| {
-            // Start as Accessory (no Dock icon, no Cmd+Tab)
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::ActivationPolicy;
-                app.set_activation_policy(ActivationPolicy::Accessory);
-            }
-
             // Apply frosted glass vibrancy to the main window
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
@@ -105,7 +173,7 @@ pub fn run() {
                 });
             }
 
-            // Right-click tray menu
+            // Initial tray menu (before we know about instances)
             let show_hide = MenuItemBuilder::with_id("show-hide", "Show / Hide").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit Colima Manager").build(app)?;
             let menu = MenuBuilder::new(app)
@@ -121,16 +189,40 @@ pub fn run() {
             let (w, h) = tray_png.dimensions();
             let tray_icon = TauriImage::new_owned(tray_png.into_raw(), w, h);
 
-            let _tray = TrayIconBuilder::new()
+            let tray = TrayIconBuilder::new()
                 .icon(tray_icon)
                 .icon_as_template(true)
                 .tooltip("Colima Manager")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => app.exit(0),
-                    "show-hide" => toggle_window(app),
-                    _ => {}
+                .on_menu_event(|app, event| {
+                    let id = event.id.as_ref();
+                    match id {
+                        "quit" => app.exit(0),
+                        "show-hide" => toggle_window(app),
+                        _ if id.starts_with("start-") => {
+                            let profile = id.strip_prefix("start-").unwrap().to_string();
+                            let app = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = commands::start_instance_simple(app, profile).await;
+                            });
+                        }
+                        _ if id.starts_with("stop-") => {
+                            let profile = id.strip_prefix("stop-").unwrap().to_string();
+                            let app = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = commands::stop_instance_simple(app, profile).await;
+                            });
+                        }
+                        _ if id.starts_with("restart-") => {
+                            let profile = id.strip_prefix("restart-").unwrap().to_string();
+                            let app = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = commands::restart_instance_simple(app, profile).await;
+                            });
+                        }
+                        _ => {}
+                    }
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -143,6 +235,20 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Store tray ID for dynamic menu updates
+            let tray_id = tray.id().0.clone();
+            app.manage(Mutex::new(TrayState { tray_id }));
+
+            // Listen for instance status changes to rebuild tray menu
+            let app_handle = app.app_handle().clone();
+            app.listen("colima-status-changed", move |event: tauri::Event| {
+                if let Ok(instances) =
+                    serde_json::from_str::<Vec<commands::ColimaInstance>>(event.payload())
+                {
+                    rebuild_tray_menu(&app_handle, &instances);
+                }
+            });
 
             Ok(())
         })

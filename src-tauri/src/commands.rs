@@ -951,3 +951,329 @@ pub async fn save_settings(app: AppHandle, settings: serde_json::Value) -> Resul
     let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&path, data).map_err(|e| e.to_string())
 }
+
+// ─── Resource Monitoring ──────────────────────────────────────────────────────
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct VmStats {
+    pub cpu_usage: String,
+    pub memory_used: String,
+    pub memory_total: String,
+    pub disk_used: String,
+    pub disk_total: String,
+}
+
+/// Get VM resource stats via `colima ssh` to read real usage from the VM.
+#[tauri::command]
+pub async fn get_vm_stats(profile: String) -> Result<VmStats, String> {
+    // Get config (cpu count, total mem, total disk) from colima status --json
+    let status_out = cmd("colima")
+        .args(["status", "--profile", &profile, "--json"])
+        .output()
+        .await
+        .map_err(|e| format!("colima not found: {}", e))?;
+
+    if !status_out.status.success() {
+        let stderr = String::from_utf8_lossy(&status_out.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("`colima status` failed (status {})", status_out.status.code().unwrap_or(-1))
+        } else {
+            stderr
+        });
+    }
+
+    let cfg: serde_json::Value = serde_json::from_slice(&status_out.stdout)
+        .map_err(|e| format!("failed to parse colima status JSON: {}", e))?;
+
+    let total_mem_bytes = cfg["memory"].as_u64().unwrap_or(0);
+    let total_disk_bytes = cfg["disk"].as_u64().unwrap_or(0);
+
+    // SSH into the VM to get live usage: free -m + df -h /
+    let ssh_out = cmd("colima")
+        .args(["ssh", "--profile", &profile, "--", "sh", "-c",
+            "free -m | awk '/^Mem:/{print $3}'; df -h / | awk 'NR==2{print $3}'"
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("colima ssh failed: {}", e))?;
+
+    let ssh_str = String::from_utf8_lossy(&ssh_out.stdout);
+    let lines: Vec<&str> = ssh_str.trim().lines().collect();
+
+    let mem_used_mb: u64 = lines.first().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let disk_used = lines.get(1).unwrap_or(&"?").to_string();
+
+    fn fmt_gib(bytes: u64) -> String {
+        let gib = bytes as f64 / 1_073_741_824.0;
+        if gib >= 10.0 { format!("{:.0} GiB", gib) } else { format!("{:.1} GiB", gib) }
+    }
+
+    fn fmt_mem_mb(mb: u64) -> String {
+        if mb >= 1024 {
+            let gib = mb as f64 / 1024.0;
+            if gib >= 10.0 { format!("{:.0} GiB", gib) } else { format!("{:.1} GiB", gib) }
+        } else {
+            format!("{} MiB", mb)
+        }
+    }
+
+    // CPU: read /proc/loadavg for a quick 1-min load average
+    let cpu_out = cmd("colima")
+        .args(["ssh", "--profile", &profile, "--", "cat", "/proc/loadavg"])
+        .output()
+        .await
+        .ok();
+    let cpu_cores = cfg["cpu"].as_u64().unwrap_or(1) as f64;
+    let cpu_usage = cpu_out
+        .and_then(|o| {
+            let s = String::from_utf8_lossy(&o.stdout).to_string();
+            s.split_whitespace().next()?.parse::<f64>().ok()
+        })
+        .map(|load| {
+            let pct = (load / cpu_cores * 100.0).min(100.0);
+            format!("{:.0}%", pct)
+        })
+        .unwrap_or_else(|| "—".to_string());
+
+    Ok(VmStats {
+        cpu_usage,
+        memory_used: fmt_mem_mb(mem_used_mb),
+        memory_total: fmt_gib(total_mem_bytes),
+        disk_used,
+        disk_total: fmt_gib(total_disk_bytes),
+    })
+}
+
+// ─── Container Stats ──────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ContainerStats {
+    #[serde(rename(deserialize = "ID"), default)]
+    pub id: String,
+    #[serde(rename(deserialize = "Name"), default)]
+    pub name: String,
+    #[serde(rename(deserialize = "CPUPerc"), default)]
+    pub cpu_percent: String,
+    #[serde(rename(deserialize = "MemUsage"), default)]
+    pub memory_usage: String,
+    #[serde(rename(deserialize = "MemPerc"), default)]
+    pub memory_limit: String,
+    #[serde(rename(deserialize = "NetIO"), default)]
+    pub net_io: String,
+    #[serde(rename(deserialize = "BlockIO"), default)]
+    pub block_io: String,
+}
+
+/// Get live container resource stats via `docker stats --no-stream`.
+#[tauri::command]
+pub async fn get_container_stats(profile: String) -> Result<Vec<ContainerStats>, String> {
+    let context = profile_to_context(&profile);
+    let out = cmd("docker")
+        .args(["--context", &context, "stats", "--no-stream", "--format", "{{json .}}"])
+        .output()
+        .await
+        .map_err(|e| format!("docker not found: {}", e))?;
+
+    if !out.status.success() {
+        return Ok(vec![]);
+    }
+
+    let mut stats = Vec::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(s) = serde_json::from_str::<ContainerStats>(line) {
+            stats.push(s);
+        }
+    }
+    Ok(stats)
+}
+
+// ─── Container Exec ───────────────────────────────────────────────────────────
+
+/// Open a new Terminal window with a shell into the container.
+/// Uses `std::process::Command` with `.spawn()` so it doesn't block.
+#[tauri::command]
+pub async fn container_exec(profile: String, container_id: String) -> Result<(), String> {
+    let context = profile_to_context(&profile);
+    let docker_cmd = format!(
+        "docker --context {} exec -it {} /bin/sh",
+        context, container_id
+    );
+
+    std::process::Command::new("open")
+        .args(["-a", "Terminal"])
+        .env("PATH", EXTRA_PATH)
+        .spawn()
+        .map_err(|e| format!("failed to open Terminal: {}", e))?;
+
+    // Use osascript to open a new Terminal window and run the docker exec command
+    std::process::Command::new("osascript")
+        .args([
+            "-e",
+            &format!(
+                "tell application \"Terminal\" to do script \"{}\"",
+                docker_cmd
+            ),
+        ])
+        .env("PATH", EXTRA_PATH)
+        .spawn()
+        .map_err(|e| format!("failed to run docker exec in Terminal: {}", e))?;
+
+    Ok(())
+}
+
+// ─── Image Pull ───────────────────────────────────────────────────────────────
+
+/// Pull a Docker image, streaming output as `log-line` events.
+#[tauri::command]
+pub async fn pull_image(app: AppHandle, profile: String, image: String) -> Result<(), String> {
+    let context = profile_to_context(&profile);
+    run_streaming(
+        app,
+        "docker",
+        vec![
+            "--context".into(),
+            context,
+            "pull".into(),
+            image,
+        ],
+        profile,
+    )
+    .await
+}
+
+// ─── Container Inspect ────────────────────────────────────────────────────────
+
+/// Run `docker inspect` on a container and return the raw JSON.
+#[tauri::command]
+pub async fn inspect_container(
+    profile: String,
+    container_id: String,
+) -> Result<serde_json::Value, String> {
+    let context = profile_to_context(&profile);
+    let out = cmd("docker")
+        .args(["--context", &context, "inspect", &container_id])
+        .output()
+        .await
+        .map_err(|e| format!("docker not found: {}", e))?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("`docker inspect` failed (status {})", out.status.code().unwrap_or(-1))
+        } else {
+            stderr
+        });
+    }
+
+    let value: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|e| format!("failed to parse docker inspect JSON: {}", e))?;
+
+    Ok(value)
+}
+
+// ─── Tray helpers (non-command wrappers) ──────────────────────────────────────
+
+/// Start an already-configured instance from the tray (uses existing colima config).
+pub async fn start_instance_simple(app: AppHandle, profile: String) -> Result<(), String> {
+    run_streaming(
+        app,
+        "colima",
+        vec!["start".into(), "--profile".into(), profile.clone()],
+        profile,
+    )
+    .await
+}
+
+/// Stop an instance from the tray.
+pub async fn stop_instance_simple(app: AppHandle, profile: String) -> Result<(), String> {
+    run_streaming(
+        app,
+        "colima",
+        vec!["stop".into(), "--profile".into(), profile.clone()],
+        profile,
+    )
+    .await
+}
+
+/// Restart an instance from the tray.
+pub async fn restart_instance_simple(app: AppHandle, profile: String) -> Result<(), String> {
+    run_streaming(
+        app,
+        "colima",
+        vec!["restart".into(), "--profile".into(), profile.clone()],
+        profile,
+    )
+    .await
+}
+
+// ─── Auto-update check ───────────────────────────────────────────────────────
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInfo {
+    pub current_version: String,
+    pub latest_version: String,
+    pub has_update: bool,
+    pub release_url: String,
+    pub release_notes: String,
+}
+
+#[tauri::command]
+pub async fn check_for_updates() -> Result<UpdateInfo, String> {
+    let current = env!("CARGO_PKG_VERSION");
+
+    let client = reqwest::Client::builder()
+        .user_agent("colima-manager")
+        .build()
+        .map_err(|e| format!("failed to create HTTP client: {}", e))?;
+
+    let resp = client
+        .get("https://api.github.com/repos/thedonmon/colima-tauri-ui/releases/latest")
+        .send()
+        .await
+        .map_err(|e| format!("failed to fetch releases: {}", e))?;
+
+    if resp.status().as_u16() == 404 {
+        // No releases published yet
+        return Ok(UpdateInfo {
+            current_version: current.to_string(),
+            latest_version: current.to_string(),
+            has_update: false,
+            release_url: String::new(),
+            release_notes: String::new(),
+        });
+    }
+
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API returned status {}", resp.status()));
+    }
+
+    let data: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("failed to parse response: {}", e))?;
+
+    let latest = data["tag_name"]
+        .as_str()
+        .unwrap_or("")
+        .trim_start_matches('v')
+        .to_string();
+    let release_url = data["html_url"].as_str().unwrap_or("").to_string();
+    let release_notes = data["body"].as_str().unwrap_or("").to_string();
+
+    let has_update = !latest.is_empty() && latest != current;
+
+    Ok(UpdateInfo {
+        current_version: current.to_string(),
+        latest_version: if latest.is_empty() { current.to_string() } else { latest },
+        has_update,
+        release_url,
+        release_notes,
+    })
+}

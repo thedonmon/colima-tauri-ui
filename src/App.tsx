@@ -18,6 +18,7 @@ import { DockerDesktopSection } from "./components/DockerDesktopSection";
 import { ModelSection } from "./components/ModelSection";
 import { SetupGuide } from "./components/SetupGuide";
 import { Settings } from "./components/Settings";
+import { ContainerInspect } from "./components/ContainerInspect";
 import type { ColimaInstance, DockerEvent, LogLine, ContainerLogsTarget } from "./types";
 
 import "./index.css";
@@ -45,6 +46,11 @@ export default function App() {
   const [configProfile, setConfigProfile] = useState<string | null>(null);
   const [containerLogsTarget, setContainerLogsTarget] = useState<ContainerLogsTarget | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>("instances");
+  const [inspectTarget, setInspectTarget] = useState<{
+    profile: string;
+    containerId: string;
+    containerName: string;
+  } | null>(null);
 
   // Track which profiles currently have an active docker-events watcher
   const watchingProfiles = useRef(new Set<string>());
@@ -141,6 +147,14 @@ export default function App() {
   return (
     <div className="relative flex flex-col h-screen bg-app-bg/90 text-fg overflow-hidden">
       {/* Full-screen overlays */}
+      {inspectTarget && (
+        <ContainerInspect
+          profile={inspectTarget.profile}
+          containerId={inspectTarget.containerId}
+          containerName={inspectTarget.containerName}
+          onClose={() => setInspectTarget(null)}
+        />
+      )}
       {configProfile && (
         <ConfigViewer profile={configProfile} onClose={() => setConfigProfile(null)} />
       )}
@@ -187,6 +201,9 @@ export default function App() {
                         onContainerLogsOpen={(target) => {
                           setShowLogs(false);
                           setContainerLogsTarget(target);
+                        }}
+                        onInspectContainer={(profile, containerId, containerName) => {
+                          setInspectTarget({ profile, containerId, containerName });
                         }}
                       />
                     ))

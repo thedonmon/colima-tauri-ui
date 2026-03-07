@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { useColimaStore } from "../store";
+import { useSettingsStore } from "../store/settings";
 import type { StartOptions } from "../types";
 
 interface StartModalProps {
@@ -11,14 +12,15 @@ interface StartModalProps {
 
 export function StartModal({ initialProfile, onClose, onStarted }: StartModalProps) {
   const { startInstance } = useColimaStore();
+  const { defaultVmPreset } = useSettingsStore();
 
   const [profile, setProfile] = useState(initialProfile ?? "default");
-  const [cpu, setCpu] = useState(4);
-  const [memory, setMemory] = useState(8);
-  const [disk, setDisk] = useState(60);
-  const [vmType, setVmType] = useState("vz");
-  const [runtime, setRuntime] = useState("docker");
-  const [rosetta, setRosetta] = useState(true);
+  const [cpu, setCpu] = useState(defaultVmPreset.cpu);
+  const [memory, setMemory] = useState(defaultVmPreset.memory);
+  const [disk, setDisk] = useState(defaultVmPreset.disk);
+  const [vmType, setVmType] = useState(defaultVmPreset.vmType);
+  const [runtime, setRuntime] = useState(defaultVmPreset.runtime);
+  const [rosetta, setRosetta] = useState(defaultVmPreset.rosetta);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
