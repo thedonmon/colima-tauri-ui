@@ -4,8 +4,45 @@ use tauri::{
     image::Image as TauriImage,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Manager, RunEvent,
 };
+
+/// Helper: show the main window and switch to Regular activation policy
+fn show_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        #[cfg(target_os = "macos")]
+        {
+            use tauri::ActivationPolicy;
+            let _ = app.set_activation_policy(ActivationPolicy::Regular);
+        }
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
+}
+
+/// Helper: hide the main window and switch to Accessory activation policy
+fn hide_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.hide();
+        #[cfg(target_os = "macos")]
+        {
+            use tauri::ActivationPolicy;
+            let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+        }
+    }
+}
+
+/// Helper: toggle the main window visibility
+fn toggle_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        if win.is_visible().unwrap_or(false) {
+            hide_window(app);
+        } else {
+            show_window(app);
+        }
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -43,7 +80,7 @@ pub fn run() {
             commands::start_colima_poller,
         ])
         .setup(|app| {
-            // Start as Accessory (no Dock icon, no Cmd+Tab) — switches to Regular when visible
+            // Start as Accessory (no Dock icon, no Cmd+Tab)
             #[cfg(target_os = "macos")]
             {
                 use tauri::ActivationPolicy;
@@ -57,17 +94,11 @@ pub fn run() {
                 let _ = apply_vibrancy(&window, NSVisualEffectMaterial::Popover, None, Some(16.0));
 
                 // Intercept the native close button (X) to hide instead of quit
-                let win = window.clone();
                 let app_handle = app.app_handle().clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        let _ = win.hide();
-                        #[cfg(target_os = "macos")]
-                        {
-                            use tauri::ActivationPolicy;
-                            let _ = app_handle.set_activation_policy(ActivationPolicy::Accessory);
-                        }
+                        hide_window(&app_handle);
                     }
                 });
             }
@@ -82,7 +113,6 @@ pub fn run() {
                 .build()?;
 
             // Tray icon — left click toggles window, right click shows menu
-            // Decode the PNG into raw RGBA for tauri::image::Image
             let tray_png = image::load_from_memory(include_bytes!("../icons/tray-icon.png"))
                 .expect("failed to decode tray icon")
                 .into_rgba8();
@@ -97,26 +127,7 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
-                    "show-hide" => {
-                        if let Some(win) = app.get_webview_window("main") {
-                            if win.is_visible().unwrap_or(false) {
-                                let _ = win.hide();
-                                #[cfg(target_os = "macos")]
-                                {
-                                    use tauri::ActivationPolicy;
-                                    let _ = app.set_activation_policy(ActivationPolicy::Accessory);
-                                }
-                            } else {
-                                #[cfg(target_os = "macos")]
-                                {
-                                    use tauri::ActivationPolicy;
-                                    let _ = app.set_activation_policy(ActivationPolicy::Regular);
-                                }
-                                let _ = win.show();
-                                let _ = win.set_focus();
-                            }
-                        }
-                    }
+                    "show-hide" => toggle_window(app),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -126,31 +137,19 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        let app = tray.app_handle();
-                        if let Some(win) = app.get_webview_window("main") {
-                            if win.is_visible().unwrap_or(false) {
-                                let _ = win.hide();
-                                #[cfg(target_os = "macos")]
-                                {
-                                    use tauri::ActivationPolicy;
-                                    let _ = app.set_activation_policy(ActivationPolicy::Accessory);
-                                }
-                            } else {
-                                #[cfg(target_os = "macos")]
-                                {
-                                    use tauri::ActivationPolicy;
-                                    let _ = app.set_activation_policy(ActivationPolicy::Regular);
-                                }
-                                let _ = win.show();
-                                let _ = win.set_focus();
-                            }
-                        }
+                        toggle_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Handle dock icon click on macOS (reopen event)
+            if let RunEvent::Reopen { .. } = event {
+                show_window(app);
+            }
+        });
 }
