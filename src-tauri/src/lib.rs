@@ -126,6 +126,8 @@ pub fn run() {
             commands::restart_instance,
             commands::delete_instance,
             commands::prune_instance,
+            commands::force_stop_instance,
+            commands::kill_stale_processes,
             commands::get_version,
             commands::get_docker_contexts,
             commands::read_config,

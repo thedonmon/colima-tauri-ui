@@ -5,7 +5,7 @@ import type { DefaultVmPreset } from "../store/settings";
 import type { UpdateInfo } from "../types";
 
 export function Settings() {
-  const { hideOnFocusLoss, notifications, defaultVmPreset, update } =
+  const { hideOnFocusLoss, notifications, skipPruneConfirm, defaultVmPreset, update } =
     useSettingsStore();
 
   const updatePreset = (partial: Partial<DefaultVmPreset>) => {
@@ -49,6 +49,12 @@ export function Settings() {
           description="Notify when instances start, stop, or encounter errors"
           value={notifications}
           onChange={(v) => update({ notifications: v })}
+        />
+        <ToggleRow
+          label="Skip prune confirmation"
+          description="Don't show the confirmation dialog when pruning cached assets"
+          value={skipPruneConfirm}
+          onChange={(v) => update({ skipPruneConfirm: v })}
         />
       </Section>
 

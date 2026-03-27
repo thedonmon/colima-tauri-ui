@@ -22,6 +22,9 @@ interface ColimaStore {
   restartInstance: (profile: string) => Promise<void>;
   deleteInstance: (profile: string) => Promise<void>;
   pruneInstance: (profile: string) => Promise<void>;
+  forceStopInstance: (profile: string) => Promise<void>;
+  killStaleProcesses: (profile: string) => Promise<void>;
+  lastCommandFailed: boolean;
   addLog: (log: LogLine) => void;
   clearLogs: () => void;
   bumpDockerTick: (profile: string) => void;
@@ -38,11 +41,14 @@ async function runCommand<T>(
   fn: () => Promise<T>,
   onDone?: () => void
 ): Promise<T> {
-  set({ isRunningCommand: true, activeProfile: profile, logs: [] });
+  set({ isRunningCommand: true, activeProfile: profile, logs: [], lastCommandFailed: false });
   try {
     const result = await fn();
     onDone?.();
     return result;
+  } catch (err) {
+    set({ lastCommandFailed: true });
+    throw err;
   } finally {
     set({ isRunningCommand: false, activeProfile: null });
   }
@@ -57,6 +63,7 @@ export const useColimaStore = create<ColimaStore>((set, get) => ({
   isRunningCommand: false,
   activeProfile: null,
   colimaInstalled: null,
+  lastCommandFailed: false,
   dockerRefreshTick: {},
 
   fetchInstances: async () => {
@@ -124,6 +131,18 @@ export const useColimaStore = create<ColimaStore>((set, get) => ({
     await runCommand(set, profile, () => invoke("prune_instance", { profile }), () =>
       get().fetchInstances()
     );
+  },
+
+  forceStopInstance: async (profile) => {
+    await runCommand(set, profile, () => invoke("force_stop_instance", { profile }), () =>
+      get().fetchInstances()
+    );
+  },
+
+  killStaleProcesses: async (profile) => {
+    await runCommand(set, profile, async () => {
+      await invoke("kill_stale_processes", { profile });
+    }, () => get().fetchInstances());
   },
 
   addLog: (log) =>

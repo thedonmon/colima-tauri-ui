@@ -226,10 +226,55 @@ pub async fn prune_instance(app: AppHandle, profile: String) -> Result<(), Strin
     run_streaming(
         app,
         "colima",
-        vec!["prune".into(), "--profile".into(), profile.clone()],
+        vec![
+            "prune".into(),
+            "--force".into(),
+            "--profile".into(),
+            profile.clone(),
+        ],
         profile,
     )
     .await
+}
+
+/// Force-stop an instance (used for crash recovery when the VM is stuck).
+#[tauri::command]
+pub async fn force_stop_instance(app: AppHandle, profile: String) -> Result<(), String> {
+    run_streaming(
+        app,
+        "colima",
+        vec![
+            "stop".into(),
+            "--force".into(),
+            "--profile".into(),
+            profile.clone(),
+        ],
+        profile,
+    )
+    .await
+}
+
+/// Kill stale Lima/QEMU processes for a profile (nuclear recovery option).
+#[tauri::command]
+pub async fn kill_stale_processes(profile: String) -> Result<String, String> {
+    // Kill lima processes for this profile
+    let lima_pattern = format!("lima/{}", if profile == "default" { "colima".to_string() } else { format!("colima-{}", profile) });
+    let _ = Command::new("pkill")
+        .args(["-f", &lima_pattern])
+        .output()
+        .await;
+
+    // Also kill any qemu processes for this profile
+    let qemu_pattern = format!("qemu.*{}", if profile == "default" { "colima".to_string() } else { format!("colima-{}", profile) });
+    let _ = Command::new("pkill")
+        .args(["-f", &qemu_pattern])
+        .output()
+        .await;
+
+    // Brief pause for processes to die
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    Ok(format!("Killed stale processes matching '{}'", lima_pattern))
 }
 
 /// Streams stdout/stderr of a child process as `log-line` events.

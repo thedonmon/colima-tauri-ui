@@ -14,7 +14,9 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useColimaStore } from "../store";
+import { useSettingsStore } from "../store/settings";
 import { StatusBadge } from "./StatusBadge";
+import { PruneConfirmModal } from "./PruneConfirmModal";
 import { ContainerRow } from "./ContainerRow";
 import { ImageRow } from "./ImageRow";
 import { VolumeRow } from "./VolumeRow";
@@ -43,9 +45,11 @@ export function InstanceCard({
 }: InstanceCardProps) {
   const { stopInstance, restartInstance, deleteInstance, pruneInstance, isRunningCommand, activeProfile, dockerRefreshTick } =
     useColimaStore();
+  const { skipPruneConfirm, update: updateSettings } = useSettingsStore();
   const tick = dockerRefreshTick[instance.profile] ?? 0;
 
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [showPruneConfirm, setShowPruneConfirm] = useState(false);
   const [showContainers, setShowContainers] = useState(false);
   const [showStopped, setShowStopped] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
@@ -167,7 +171,16 @@ export function InstanceCard({
     await deleteInstance(instance.profile);
   };
 
-  const handlePrune = async () => {
+  const handlePrune = () => {
+    if (skipPruneConfirm) {
+      doPrune();
+    } else {
+      setShowPruneConfirm(true);
+    }
+  };
+
+  const doPrune = async () => {
+    setShowPruneConfirm(false);
     onViewLogs();
     await pruneInstance(instance.profile);
   };
@@ -181,6 +194,17 @@ export function InstanceCard({
           : "border-border bg-white/[0.04]"
       )}
     >
+      {showPruneConfirm && (
+        <PruneConfirmModal
+          profile={instance.profile}
+          onCancel={() => setShowPruneConfirm(false)}
+          onConfirm={(dontAskAgain) => {
+            if (dontAskAgain) updateSettings({ skipPruneConfirm: true });
+            doPrune();
+          }}
+        />
+      )}
+
       {/* Card body */}
       <div className="px-4 pt-4 pb-3">
         {/* Header row */}

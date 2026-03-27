@@ -13,12 +13,14 @@ export interface DefaultVmPreset {
 export interface AppSettings {
   hideOnFocusLoss: boolean;
   notifications: boolean;
+  skipPruneConfirm: boolean;
   defaultVmPreset: DefaultVmPreset;
 }
 
 const defaults: AppSettings = {
   hideOnFocusLoss: false,
   notifications: true,
+  skipPruneConfirm: false,
   defaultVmPreset: {
     cpu: 4,
     memory: 8,
@@ -58,6 +60,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const next: AppSettings = {
       hideOnFocusLoss: partial.hideOnFocusLoss ?? current.hideOnFocusLoss,
       notifications: partial.notifications ?? current.notifications,
+      skipPruneConfirm: partial.skipPruneConfirm ?? current.skipPruneConfirm,
       defaultVmPreset: partial.defaultVmPreset ?? current.defaultVmPreset,
     };
     set(next);
