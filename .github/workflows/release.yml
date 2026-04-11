@@ -21,9 +21,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          COMMIT_SHA=$(git rev-list -1 HEAD~1)
-          echo "Checking CI for commit $COMMIT_SHA"
-          RUN_ID=$(gh run list --commit "$COMMIT_SHA" --workflow CI --json databaseId -q '.[0].databaseId // empty')
+          echo "Checking CI for commit $GITHUB_SHA"
+          RUN_ID=$(gh run list --commit "$GITHUB_SHA" --workflow CI --json databaseId -q '.[0].databaseId // empty')
           if [ -z "$RUN_ID" ]; then
             echo "No CI run found for $COMMIT_SHA — aborting release"
             exit 1
