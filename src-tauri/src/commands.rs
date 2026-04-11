@@ -676,36 +676,48 @@ pub async fn remove_volume(profile: String, volume_name: String) -> Result<(), S
 // ─── Colima AI Models ─────────────────────────────────────────────────────────
 
 /// Run `colima model setup` for a given profile.
-/// On colima < 0.10.1 (no Docker Model Runner), starts a krunkit instance first.
-/// On 0.10.1+, skips krunkit and runs setup directly.
+/// If the profile is already krunkit, runs setup directly.
+/// If not, creates a new krunkit profile with the given name and resources.
 #[tauri::command]
 pub async fn colima_model_setup(
     app: AppHandle,
     profile: String,
-    skip_krunkit: bool,
+    is_krunkit: bool,
+    new_profile: Option<String>,
+    cpu: Option<u32>,
+    memory: Option<u32>,
+    disk: Option<u32>,
 ) -> Result<(), String> {
-    if !skip_krunkit {
-        // Legacy path: start/ensure a krunkit + docker instance for GPU access
+    let target_profile = if is_krunkit {
+        profile
+    } else {
+        let ai_profile = new_profile.unwrap_or_else(|| "ai".to_string());
         let mut start_args = vec![
             "start".to_string(),
             "--runtime".to_string(),
             "docker".to_string(),
             "--vm-type".to_string(),
             "krunkit".to_string(),
+            "--cpu".to_string(),
+            cpu.unwrap_or(4).to_string(),
+            "--memory".to_string(),
+            memory.unwrap_or(8).to_string(),
+            "--disk".to_string(),
+            disk.unwrap_or(60).to_string(),
+            "--profile".to_string(),
+            ai_profile.clone(),
         ];
-        if profile != "default" {
-            start_args.extend(["--profile".to_string(), profile.clone()]);
-        }
-        // Ignore start errors — instance may already be running
-        let _ = run_streaming(app.clone(), "colima", start_args, profile.clone()).await;
-    }
+        // Add model-runner flag if colima supports it
+        start_args.extend(["--model-runner".to_string(), "docker".to_string()]);
+        let _ = run_streaming(app.clone(), "colima", start_args, ai_profile.clone()).await;
+        ai_profile
+    };
 
-    // Run model setup
     let mut setup_args = vec!["model".to_string(), "setup".to_string()];
-    if profile != "default" {
-        setup_args.extend(["--profile".to_string(), profile.clone()]);
+    if target_profile != "default" {
+        setup_args.extend(["--profile".to_string(), target_profile.clone()]);
     }
-    run_streaming(app, "colima", setup_args, profile).await
+    run_streaming(app, "colima", setup_args, target_profile).await
 }
 
 /// Run `colima model run <model>` for a given profile (streams output).

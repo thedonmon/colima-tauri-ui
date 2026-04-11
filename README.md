@@ -41,16 +41,20 @@
 
 ### Optional: AI model support
 
-**Colima 0.10.1+** (recommended): Uses [Docker Model Runner](https://docs.docker.com/model-runner/) — works with any VM type, no extra setup needed. Just open the **AI** tab and run a model.
-
-**Colima < 0.10.1**: Requires Apple Silicon + macOS 13+ and krunkit for GPU access:
+Requires Apple Silicon + macOS 13+ and krunkit VM type for GPU access.
 
 ```sh
 brew tap slp/krunkit
 brew install krunkit
 ```
 
-Then use the **AI** tab → **Setup** to get started.
+Then use the **AI** tab → **Setup** to get started, or start colima manually:
+
+```sh
+colima start --runtime docker --vm-type krunkit
+```
+
+Colima 0.10.1+ uses [Docker Model Runner](https://docs.docker.com/model-runner/) by default. Earlier versions use ramalama. Both require krunkit.
 
 ---
 
