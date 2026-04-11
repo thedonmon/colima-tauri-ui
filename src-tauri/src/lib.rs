@@ -158,6 +158,10 @@ pub fn run() {
             commands::container_exec,
             commands::pull_image,
             commands::inspect_container,
+            commands::colima_model_serve,
+            commands::colima_model_stop_serve,
+            commands::colima_model_pull,
+            commands::colima_model_list,
         ])
         .setup(|app| {
             // Apply frosted glass vibrancy to the main window

@@ -717,6 +717,97 @@ pub async fn colima_model_run(
     run_streaming(app, "colima", args, profile).await
 }
 
+/// Serve a model as an OpenAI-compatible API server (long-running background task).
+/// Stores abort handle so it can be stopped via `colima_model_stop_serve`.
+#[tauri::command]
+pub async fn colima_model_serve(
+    app: AppHandle,
+    profile: String,
+    model: String,
+    port: Option<u16>,
+) -> Result<(), String> {
+    let state = app.state::<WatcherState>();
+    let key = format!("model-serve:{}", profile);
+
+    // Stop any existing serve for this profile
+    if let Some(handle) = state.handles.lock().unwrap().remove(&key) {
+        handle.abort();
+    }
+
+    let mut args = vec!["model".to_string(), "serve".to_string(), model];
+    if let Some(p) = port {
+        args.extend(["--".to_string(), "--port".to_string(), p.to_string()]);
+    }
+    if profile != "default" {
+        args.extend(["--profile".to_string(), profile.clone()]);
+    }
+
+    let app_clone = app.clone();
+    let profile_clone = profile.clone();
+    let handle = tokio::spawn(async move {
+        let _ = run_streaming(app_clone, "colima", args, profile_clone).await;
+    });
+
+    state
+        .handles
+        .lock()
+        .unwrap()
+        .insert(key, handle.abort_handle());
+
+    Ok(())
+}
+
+/// Stop a running model serve process.
+#[tauri::command]
+pub async fn colima_model_stop_serve(app: AppHandle, profile: String) -> Result<(), String> {
+    let state = app.state::<WatcherState>();
+    let key = format!("model-serve:{}", profile);
+    let removed = state.handles.lock().unwrap().remove(&key);
+    if let Some(handle) = removed {
+        handle.abort();
+        // Also kill any lingering colima model serve processes for this profile
+        let _ = cmd("pkill")
+            .args(["-f", &format!("colima model serve.*{}", profile)])
+            .output()
+            .await;
+    }
+    Ok(())
+}
+
+/// Pull a model without running it.
+#[tauri::command]
+pub async fn colima_model_pull(
+    app: AppHandle,
+    profile: String,
+    model: String,
+) -> Result<(), String> {
+    let mut args = vec!["model".to_string(), "pull".to_string(), model];
+    if profile != "default" {
+        args.extend(["--profile".to_string(), profile.clone()]);
+    }
+    run_streaming(app, "colima", args, profile).await
+}
+
+/// List downloaded models for a profile.
+#[tauri::command]
+pub async fn colima_model_list(profile: String) -> Result<String, String> {
+    let mut args = vec!["model".to_string(), "list".to_string()];
+    if profile != "default" {
+        args.extend(["--profile".to_string(), profile]);
+    }
+    let output = cmd("colima")
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| format!("failed to run colima model list: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(stderr);
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Read a profile's colima.yaml and extract the vmType field.
 /// Returns an empty string if the profile doesn't use a special VM type.
 #[tauri::command]

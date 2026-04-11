@@ -1,28 +1,40 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronDown,
   ChevronRight,
   Cpu,
+  Download,
+  List,
   Play,
   Settings,
+  Square,
   AlertTriangle,
+  Radio,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useColimaStore } from "../store";
 
-const REGISTRY_PREFIXES = [
-  { label: "HuggingFace (default)", value: "hf://", example: "hf://tinyllama" },
-  { label: "Ollama", value: "ollama://", example: "ollama://tinyllama" },
-  { label: "Bare name", value: "", example: "gemma3" },
+const CHAT_MODELS = [
+  "gemma3",
+  "hf://tinyllama",
+  "ollama://tinyllama",
+  "hf://phi-2",
+  "ollama://mistral",
 ];
 
-const EXAMPLE_MODELS = ["gemma3", "hf://tinyllama", "ollama://tinyllama", "hf://phi-2"];
+const EMBEDDING_MODELS = [
+  "ollama://nomic-embed-text",
+  "ollama://all-minilm",
+  "ollama://mxbai-embed-large",
+];
 
 interface ModelSectionProps {
   defaultOpen?: boolean;
   onViewLogs?: () => void;
 }
+
+type BusyState = "setup" | "run" | "pull" | null;
 
 export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}) {
   const { instances } = useColimaStore();
@@ -32,8 +44,12 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
   const [selectedProfile, setSelectedProfile] = useState<string>("default");
   const [modelInput, setModelInput] = useState("");
   const [vmType, setVmType] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState<"setup" | "run" | null>(null);
+  const [busy, setBusy] = useState<BusyState>(null);
+  const [serving, setServing] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [modelList, setModelList] = useState<string | null>(null);
+  const [showList, setShowList] = useState(false);
+  const [tab, setTab] = useState<"run" | "serve">("run");
 
   const handleOpen = async () => {
     if (!open) {
@@ -55,6 +71,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
   };
 
   const isKrunkit = vmType[selectedProfile] === "krunkit";
+  const isServing = !!serving[selectedProfile];
 
   const handleSetup = async () => {
     onViewLogs?.();
@@ -83,6 +100,65 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
       setBusy(null);
     }
   };
+
+  const handleServe = async () => {
+    const model = modelInput.trim();
+    if (!model) return;
+    onViewLogs?.();
+    setError(null);
+    try {
+      await invoke("colima_model_serve", {
+        profile: selectedProfile,
+        model,
+        port: null,
+      });
+      setServing((prev) => ({ ...prev, [selectedProfile]: model }));
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleStopServe = async () => {
+    setError(null);
+    try {
+      await invoke("colima_model_stop_serve", { profile: selectedProfile });
+      setServing((prev) => {
+        const next = { ...prev };
+        delete next[selectedProfile];
+        return next;
+      });
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handlePull = async () => {
+    const model = modelInput.trim();
+    if (!model) return;
+    onViewLogs?.();
+    setBusy("pull");
+    setError(null);
+    try {
+      await invoke("colima_model_pull", { profile: selectedProfile, model });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleList = useCallback(async () => {
+    setError(null);
+    try {
+      const result = await invoke<string>("colima_model_list", { profile: selectedProfile });
+      setModelList(result);
+      setShowList(true);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [selectedProfile]);
+
+  const examples = tab === "serve" ? EMBEDDING_MODELS : CHAT_MODELS;
 
   return (
     <div className="rounded-xl border border-border bg-white/[0.03] overflow-hidden">
@@ -151,63 +227,191 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
             </div>
           )}
 
-          {/* Setup button */}
-          <button
-            onClick={handleSetup}
-            disabled={busy !== null || runningInstances.length === 0}
-            className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Settings size={13} className={cn(busy === "setup" && "animate-spin")} />
-            {busy === "setup" ? "Setting up..." : "colima model setup"}
-          </button>
+          {/* Setup + List buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={handleSetup}
+              disabled={busy !== null || runningInstances.length === 0}
+              className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Settings size={13} className={cn(busy === "setup" && "animate-spin")} />
+              {busy === "setup" ? "Setting up..." : "Setup"}
+            </button>
+            <button
+              onClick={handleList}
+              disabled={busy !== null || runningInstances.length === 0}
+              className="flex items-center gap-2 rounded-lg border border-border bg-white/[0.04] px-3.5 py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <List size={13} />
+              Models
+            </button>
+          </div>
 
-          {/* Run model */}
+          {/* Serving indicator */}
+          {isServing && (
+            <div className="flex items-center justify-between rounded-lg bg-emerald-500/[0.08] border border-emerald-500/20 px-3.5 py-2.5">
+              <div className="flex items-center gap-2.5">
+                <Radio size={13} className="text-emerald-400 animate-pulse" />
+                <div>
+                  <p className="text-xs text-emerald-400 font-medium">
+                    Serving: {serving[selectedProfile]}
+                  </p>
+                  <p className="text-xs text-emerald-400/60">
+                    OpenAI-compatible API running
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleStopServe}
+                className="flex items-center gap-1.5 rounded-lg bg-red-500/15 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/25 transition-all"
+              >
+                <Square size={10} />
+                Stop
+              </button>
+            </div>
+          )}
+
+          {/* Run / Serve tab toggle */}
+          <div className="flex rounded-lg bg-white/[0.04] border border-border p-0.5">
+            <button
+              onClick={() => setTab("run")}
+              className={cn(
+                "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                tab === "run"
+                  ? "bg-purple-500/20 text-purple-300 shadow-sm"
+                  : "text-fg-muted hover:text-fg-secondary"
+              )}
+            >
+              Run (Interactive)
+            </button>
+            <button
+              onClick={() => setTab("serve")}
+              className={cn(
+                "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                tab === "serve"
+                  ? "bg-emerald-500/20 text-emerald-300 shadow-sm"
+                  : "text-fg-muted hover:text-fg-secondary"
+              )}
+            >
+              Serve (API)
+            </button>
+          </div>
+
+          {/* Model input + action buttons */}
           <div className="space-y-2">
             <div className="flex gap-2">
               <input
                 value={modelInput}
                 onChange={(e) => setModelInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleRun()}
-                placeholder="gemma3  ·  hf://tinyllama  ·  ollama://mistral"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (tab === "run") handleRun();
+                    else handleServe();
+                  }
+                }}
+                placeholder={
+                  tab === "serve"
+                    ? "ollama://nomic-embed-text  ·  gemma3"
+                    : "gemma3  ·  hf://tinyllama  ·  ollama://mistral"
+                }
                 className="flex-1 bg-white/[0.04] border border-border rounded-lg px-3 py-2 text-sm text-fg placeholder:text-fg-faint outline-none focus:border-purple-500/40 transition-colors"
               />
-              <button
-                onClick={handleRun}
-                disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0}
-                className="flex items-center gap-2 rounded-lg bg-purple-500/20 px-3.5 py-2 text-sm text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Play size={12} />
-                {busy === "run" ? "Running..." : "Run"}
-              </button>
+              {tab === "run" ? (
+                <button
+                  onClick={handleRun}
+                  disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0}
+                  className="flex items-center gap-2 rounded-lg bg-purple-500/20 px-3.5 py-2 text-sm text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Play size={12} />
+                  {busy === "run" ? "Running..." : "Run"}
+                </button>
+              ) : (
+                <button
+                  onClick={handleServe}
+                  disabled={!modelInput.trim() || busy !== null || isServing || runningInstances.length === 0}
+                  className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-3.5 py-2 text-sm text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Radio size={12} />
+                  Serve
+                </button>
+              )}
             </div>
+
+            {/* Pull button */}
+            <button
+              onClick={handlePull}
+              disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0}
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2 text-xs text-fg-muted hover:bg-white/[0.06] hover:text-fg-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download size={11} />
+              {busy === "pull" ? "Pulling..." : "Pull model (download only)"}
+            </button>
 
             {/* Quick examples */}
-            <div className="flex flex-wrap gap-1.5">
-              {EXAMPLE_MODELS.map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setModelInput(m)}
-                  className="text-xs font-mono rounded-md px-2 py-1 bg-white/[0.04] text-fg-muted hover:text-fg-secondary hover:bg-white/[0.07] transition-all"
-                >
-                  {m}
-                </button>
-              ))}
+            <div>
+              <p className="text-xs text-fg-faint mb-1.5">
+                {tab === "serve" ? "Embedding models" : "Chat models"}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {examples.map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setModelInput(m)}
+                    className="text-xs font-mono rounded-md px-2 py-1 bg-white/[0.04] text-fg-muted hover:text-fg-secondary hover:bg-white/[0.07] transition-all"
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Registry guide */}
-          <div className="rounded-lg bg-white/[0.02] border border-border-subtle px-3.5 py-2.5 space-y-1.5">
-            <p className="text-xs text-fg-muted font-medium mb-2">Supported registries</p>
-            {REGISTRY_PREFIXES.map((r) => (
-              <div key={r.label} className="flex items-center gap-2.5">
-                <span className="text-xs font-mono text-purple-400/70 w-20 flex-shrink-0">
-                  {r.value || "bare"}
-                </span>
-                <span className="text-xs text-fg-muted">{r.label}</span>
-                <span className="text-xs font-mono text-fg-faint ml-auto">{r.example}</span>
+          {/* Model list */}
+          {showList && modelList !== null && (
+            <div className="rounded-lg bg-white/[0.02] border border-border-subtle overflow-hidden">
+              <div className="flex items-center justify-between px-3.5 py-2 border-b border-border-subtle">
+                <p className="text-xs text-fg-muted font-medium">Downloaded Models</p>
+                <button
+                  onClick={() => setShowList(false)}
+                  className="text-xs text-fg-faint hover:text-fg-muted transition-colors"
+                >
+                  Close
+                </button>
               </div>
-            ))}
-          </div>
+              <div className="px-3.5 py-2.5 max-h-40 overflow-y-auto">
+                {modelList.trim() ? (
+                  <pre className="text-xs text-fg-secondary font-mono whitespace-pre-wrap leading-relaxed">
+                    {modelList}
+                  </pre>
+                ) : (
+                  <p className="text-xs text-fg-muted italic">No models downloaded yet.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Registry guide */}
+          <details className="group">
+            <summary className="text-xs text-fg-faint cursor-pointer hover:text-fg-muted transition-colors list-none flex items-center gap-1.5">
+              <ChevronRight size={11} className="group-open:rotate-90 transition-transform" />
+              Supported registries
+            </summary>
+            <div className="rounded-lg bg-white/[0.02] border border-border-subtle px-3.5 py-2.5 space-y-1.5 mt-2">
+              {[
+                { label: "HuggingFace (default)", value: "hf://", example: "hf://tinyllama" },
+                { label: "Ollama", value: "ollama://", example: "ollama://tinyllama" },
+                { label: "Bare name", value: "", example: "gemma3" },
+              ].map((r) => (
+                <div key={r.label} className="flex items-center gap-2.5">
+                  <span className="text-xs font-mono text-purple-400/70 w-20 flex-shrink-0">
+                    {r.value || "bare"}
+                  </span>
+                  <span className="text-xs text-fg-muted">{r.label}</span>
+                  <span className="text-xs font-mono text-fg-faint ml-auto">{r.example}</span>
+                </div>
+              ))}
+            </div>
+          </details>
 
           {/* Error */}
           {error && (
