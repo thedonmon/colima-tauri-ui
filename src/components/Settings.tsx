@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { useSettingsStore } from "../store/settings";
 import type { DefaultVmPreset } from "../store/settings";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -12,8 +13,13 @@ export function Settings() {
     update({ defaultVmPreset: { ...defaultVmPreset, ...partial } });
   };
 
+  const [appVersion, setAppVersion] = useState<string>("");
   const [updateAvailable, setUpdateAvailable] = useState<Update | null>(null);
   const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    getVersion().then(setAppVersion);
+  }, []);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -60,7 +66,9 @@ export function Settings() {
     <div className="px-4 py-4 space-y-4">
       <div>
         <p className="text-base font-semibold text-fg mb-1">Settings</p>
-        <p className="text-xs text-fg-muted">Configure app behavior</p>
+        <p className="text-xs text-fg-muted">
+          Colima Manager{appVersion ? ` v${appVersion}` : ""}
+        </p>
       </div>
 
       {/* Behavior */}

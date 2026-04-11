@@ -74,7 +74,7 @@ export function Header({ onRefresh, onNewInstance }: HeaderProps) {
           <>
             <span className="text-fg-faint">·</span>
             <span className="text-xs text-fg-faint font-mono">
-              {version.split("\n")[0].replace("colima version ", "v")}
+              colima {version.split("\n")[0].replace("colima version ", "v")}
             </span>
           </>
         )}

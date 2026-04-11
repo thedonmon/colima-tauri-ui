@@ -36,9 +36,18 @@ interface ModelSectionProps {
 
 type BusyState = "setup" | "run" | "pull" | null;
 
+/** Parse "colima version X.Y.Z" and return true if >= 0.10.1 (Docker Model Runner support) */
+function hasDockerRunner(versionStr: string): boolean {
+  const match = versionStr.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return false;
+  const [, major, minor, patch] = match.map(Number);
+  return major > 0 || minor > 10 || (minor === 10 && patch >= 1);
+}
+
 export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}) {
-  const { instances } = useColimaStore();
+  const { instances, version } = useColimaStore();
   const runningInstances = instances.filter((i) => i.status.toLowerCase() === "running");
+  const supportsDockerRunner = hasDockerRunner(version);
 
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [selectedProfile, setSelectedProfile] = useState<string>("default");
@@ -175,7 +184,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
           <span className="text-xs text-fg-muted font-mono">colima model</span>
         </div>
         <span className="text-xs text-purple-400/70 bg-purple-500/10 rounded-full px-2.5 py-1">
-          krunkit
+          {supportsDockerRunner ? "docker" : "krunkit"}
         </span>
       </button>
 
@@ -185,9 +194,21 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
           <div className="flex items-start gap-2.5 rounded-lg bg-purple-500/[0.06] border border-purple-500/15 px-3.5 py-3">
             <AlertTriangle size={13} className="text-purple-400/80 mt-0.5 flex-shrink-0" />
             <p className="text-xs text-purple-300/70 leading-relaxed">
-              Requires Apple Silicon + macOS 13+. "Setup" will start a{" "}
-              <span className="font-mono text-purple-300/90">krunkit</span> instance then run{" "}
-              <span className="font-mono text-purple-300/90">colima model setup</span> automatically.
+              {supportsDockerRunner ? (
+                <>
+                  Using <span className="font-mono text-purple-300/90">Docker Model Runner</span> (colima 0.10.1+).
+                  No krunkit required — works with any VM type.
+                </>
+              ) : (
+                <>
+                  Requires Apple Silicon + macOS 13+. "Setup" will start a{" "}
+                  <span className="font-mono text-purple-300/90">krunkit</span> instance then run{" "}
+                  <span className="font-mono text-purple-300/90">colima model setup</span> automatically.
+                  <span className="block mt-1 text-purple-300/50">
+                    Upgrade to colima 0.10.1+ for Docker Model Runner (no krunkit needed).
+                  </span>
+                </>
+              )}
             </p>
           </div>
 
@@ -210,19 +231,21 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
             </div>
           )}
 
-          {/* krunkit status */}
+          {/* Runner status */}
           {runningInstances.length > 0 && (
             <div className="flex items-center gap-2.5">
               <span
                 className={cn(
                   "h-2 w-2 rounded-full",
-                  isKrunkit ? "bg-green-500" : "bg-yellow-500/70"
+                  supportsDockerRunner || isKrunkit ? "bg-green-500" : "bg-yellow-500/70"
                 )}
               />
               <span className="text-xs text-fg-muted">
-                {isKrunkit
-                  ? "krunkit detected — GPU acceleration available"
-                  : `VM type: ${vmType[selectedProfile] || "qemu/vz"} — restart with krunkit for GPU`}
+                {supportsDockerRunner
+                  ? "Docker Model Runner ready"
+                  : isKrunkit
+                    ? "krunkit detected — GPU acceleration available"
+                    : `VM type: ${vmType[selectedProfile] || "qemu/vz"} — restart with krunkit for GPU`}
               </span>
             </div>
           )}
