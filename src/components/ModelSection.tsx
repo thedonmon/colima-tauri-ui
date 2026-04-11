@@ -88,6 +88,8 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
   const isKrunkit = vmType[selectedProfile] === "krunkit";
   const isServing = !!serving[selectedProfile];
   const canRunModels = isKrunkit;
+  const noInstances = runningInstances.length === 0;
+  const actionsDisabled = busy !== null || noInstances || !canRunModels;
 
   const handleSetup = async () => {
     if (!isKrunkit && !showSetupForm) {
@@ -254,18 +256,23 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
           {runningInstances.length > 1 && (
             <div className="flex items-center gap-2.5">
               <span className="text-xs text-fg-muted">Profile</span>
-              <select
-                value={selectedProfile}
-                onChange={(e) => setSelectedProfile(e.target.value)}
-                className="flex-1 bg-white/[0.04] border border-border rounded-lg px-2.5 py-1.5 text-sm text-fg outline-none"
-              >
+              <div className="flex rounded-lg bg-white/[0.04] border border-border p-0.5">
                 {runningInstances.map((i) => (
-                  <option key={i.profile} value={i.profile}>
+                  <button
+                    key={i.profile}
+                    onClick={() => setSelectedProfile(i.profile)}
+                    className={cn(
+                      "px-3 py-1 text-xs font-medium rounded-md transition-all",
+                      selectedProfile === i.profile
+                        ? "bg-purple-500/20 text-purple-300 shadow-sm"
+                        : "text-fg-muted hover:text-fg-secondary"
+                    )}
+                  >
                     {i.profile}
                     {vmType[i.profile] ? ` (${vmType[i.profile]})` : ""}
-                  </option>
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
           )}
 
@@ -288,18 +295,23 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
 
           {/* Setup + List buttons */}
           <div className="flex gap-2">
-            <button
-              onClick={handleSetup}
-              disabled={busy !== null || runningInstances.length === 0}
-              className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Settings size={13} className={cn(busy === "setup" && "animate-spin")} />
-              {busy === "setup" ? "Setting up..." : "Setup"}
-            </button>
+            {!isKrunkit && (
+              <button
+                onClick={handleSetup}
+                disabled={busy !== null || noInstances}
+                className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Settings size={13} className={cn(busy === "setup" && "animate-spin")} />
+                {busy === "setup" ? "Setting up..." : "Setup"}
+              </button>
+            )}
             <button
               onClick={handleList}
-              disabled={busy !== null || runningInstances.length === 0 || !canRunModels}
-              className="flex items-center gap-2 rounded-lg border border-border bg-white/[0.04] px-3.5 py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={actionsDisabled}
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] px-3.5 py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed",
+                isKrunkit && "flex-1"
+              )}
             >
               <List size={13} />
               Models
@@ -462,7 +474,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               {tab === "run" ? (
                 <button
                   onClick={handleRun}
-                  disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0 || !canRunModels}
+                  disabled={!modelInput.trim() || actionsDisabled}
                   className="flex items-center gap-2 rounded-lg bg-purple-500/20 px-3.5 py-2 text-sm text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Play size={12} />
@@ -471,7 +483,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               ) : (
                 <button
                   onClick={handleServe}
-                  disabled={!modelInput.trim() || busy !== null || isServing || runningInstances.length === 0 || !canRunModels}
+                  disabled={!modelInput.trim() || actionsDisabled || isServing}
                   className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-3.5 py-2 text-sm text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Radio size={12} />
@@ -483,7 +495,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
             {/* Pull button */}
             <button
               onClick={handlePull}
-              disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0 || !canRunModels}
+              disabled={!modelInput.trim() || actionsDisabled}
               className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2 text-xs text-fg-muted hover:bg-white/[0.06] hover:text-fg-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Download size={11} />
