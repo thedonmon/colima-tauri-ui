@@ -1,6 +1,6 @@
 [package]
 name = "colima-manager"
-version = "0.1.6"
+version = "0.1.7"
 description = "Colima Manager - macOS menu bar app for managing Colima"
 authors = ["dmaman"]
 edition = "2021"
