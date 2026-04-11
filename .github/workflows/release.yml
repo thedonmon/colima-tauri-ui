@@ -21,21 +21,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           COMMIT_SHA=$(git rev-list -1 HEAD~1)
-          echo "Checking CI status for commit $COMMIT_SHA"
-          for i in 1 2 3 4 5 6; do
-            STATUS=$(gh run list --commit "$COMMIT_SHA" --workflow CI --json conclusion -q '.[0].conclusion // empty')
-            if [ "$STATUS" = "success" ]; then
-              echo "CI passed"
-              exit 0
-            elif [ "$STATUS" = "failure" ]; then
-              echo "CI failed on $COMMIT_SHA — aborting release"
-              exit 1
-            fi
-            echo "CI not finished yet, waiting 30s... (attempt $i/6)"
-            sleep 30
-          done
-          echo "CI did not complete in time — aborting release"
-          exit 1
+          echo "Checking CI for commit $COMMIT_SHA"
+          RUN_ID=$(gh run list --commit "$COMMIT_SHA" --workflow CI --json databaseId -q '.[0].databaseId // empty')
+          if [ -z "$RUN_ID" ]; then
+            echo "No CI run found for $COMMIT_SHA — aborting release"
+            exit 1
+          fi
+          gh run watch "$RUN_ID" --exit-status
 
       - name: Generate release notes
         id: notes
