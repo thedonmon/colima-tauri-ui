@@ -23,9 +23,9 @@
 - **Image management** — List, pull, remove, and prune Docker images
 - **Volume management** — List, remove, and prune Docker volumes
 - **Docker Desktop support** — View and manage containers from non-Colima Docker contexts (e.g. `desktop-linux`)
-- **AI Models tab** — Run `colima model` commands with GPU acceleration via krunkit
+- **AI Models tab** — Run, serve, pull, and list models with Docker Model Runner (0.10.1+) or krunkit
 - **Quick tray actions** — Start, stop, and restart instances directly from the menu bar
-- **Auto-update checker** — Get notified when a new version is available
+- **In-app auto-updates** — Download and install new versions directly from the app (signed builds)
 - **Settings** — Configurable default VM presets, auto-hide, notifications
 - **Log drawer** — Streams real-time output for any long-running command
 - **Config viewer** — Inspect a profile's `colima.yaml` without leaving the app
@@ -41,14 +41,16 @@
 
 ### Optional: AI model support
 
-Requires Apple Silicon + macOS 13+.
+**Colima 0.10.1+** (recommended): Uses [Docker Model Runner](https://docs.docker.com/model-runner/) — works with any VM type, no extra setup needed. Just open the **AI** tab and run a model.
+
+**Colima < 0.10.1**: Requires Apple Silicon + macOS 13+ and krunkit for GPU access:
 
 ```sh
 brew tap slp/krunkit
 brew install krunkit
 ```
 
-Then use the **AI** tab → **colima model setup** to get started. The app will automatically start a `krunkit` instance and run `colima model setup` for you.
+Then use the **AI** tab → **Setup** to get started.
 
 ---
 
@@ -60,11 +62,11 @@ Then use the **AI** tab → **colima model setup** to get started. The app will 
 2. Download the `.dmg` file
 3. Drag **Colima Manager** to your Applications folder
 
-> **Note:** Since the app is not code-signed, macOS will quarantine it. After dragging to Applications, run:
+> **Note:** The app is not notarized with Apple (I'm not paying $99/yr for a developer account). macOS will quarantine it on first install. Run this once:
 > ```sh
 > xattr -cr "/Applications/Colima Manager.app"
 > ```
-> Then open the app normally.
+> This is a **one-time step**. After that, all future updates are delivered and installed automatically through the in-app updater (Settings → Check for updates). Update builds are signed and verified, and you'll see [release notes](https://github.com/thedonmon/colima-tauri-ui/releases) before installing.
 
 ### Build from source
 

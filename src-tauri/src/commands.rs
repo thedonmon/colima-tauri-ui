@@ -676,25 +676,31 @@ pub async fn remove_volume(profile: String, volume_name: String) -> Result<(), S
 // ─── Colima AI Models ─────────────────────────────────────────────────────────
 
 /// Run `colima model setup` for a given profile.
-/// First starts a krunkit instance (required for model support), then runs setup.
-/// Streams all output as log-line events.
+/// On colima < 0.10.1 (no Docker Model Runner), starts a krunkit instance first.
+/// On 0.10.1+, skips krunkit and runs setup directly.
 #[tauri::command]
-pub async fn colima_model_setup(app: AppHandle, profile: String) -> Result<(), String> {
-    // Step 1: Start/ensure a krunkit + docker instance is running
-    let mut start_args = vec![
-        "start".to_string(),
-        "--runtime".to_string(),
-        "docker".to_string(),
-        "--vm-type".to_string(),
-        "krunkit".to_string(),
-    ];
-    if profile != "default" {
-        start_args.extend(["--profile".to_string(), profile.clone()]);
+pub async fn colima_model_setup(
+    app: AppHandle,
+    profile: String,
+    skip_krunkit: bool,
+) -> Result<(), String> {
+    if !skip_krunkit {
+        // Legacy path: start/ensure a krunkit + docker instance for GPU access
+        let mut start_args = vec![
+            "start".to_string(),
+            "--runtime".to_string(),
+            "docker".to_string(),
+            "--vm-type".to_string(),
+            "krunkit".to_string(),
+        ];
+        if profile != "default" {
+            start_args.extend(["--profile".to_string(), profile.clone()]);
+        }
+        // Ignore start errors — instance may already be running
+        let _ = run_streaming(app.clone(), "colima", start_args, profile.clone()).await;
     }
-    // Ignore start errors — instance may already be running
-    let _ = run_streaming(app.clone(), "colima", start_args, profile.clone()).await;
 
-    // Step 2: Run model setup
+    // Run model setup
     let mut setup_args = vec!["model".to_string(), "setup".to_string()];
     if profile != "default" {
         setup_args.extend(["--profile".to_string(), profile.clone()]);

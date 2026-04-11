@@ -81,13 +81,14 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
 
   const isKrunkit = vmType[selectedProfile] === "krunkit";
   const isServing = !!serving[selectedProfile];
+  const canRunModels = supportsDockerRunner || isKrunkit;
 
   const handleSetup = async () => {
     onViewLogs?.();
     setBusy("setup");
     setError(null);
     try {
-      await invoke("colima_model_setup", { profile: selectedProfile });
+      await invoke("colima_model_setup", { profile: selectedProfile, skipKrunkit: supportsDockerRunner });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -262,7 +263,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
             </button>
             <button
               onClick={handleList}
-              disabled={busy !== null || runningInstances.length === 0}
+              disabled={busy !== null || runningInstances.length === 0 || !canRunModels}
               className="flex items-center gap-2 rounded-lg border border-border bg-white/[0.04] px-3.5 py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <List size={13} />
@@ -342,7 +343,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               {tab === "run" ? (
                 <button
                   onClick={handleRun}
-                  disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0}
+                  disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0 || !canRunModels}
                   className="flex items-center gap-2 rounded-lg bg-purple-500/20 px-3.5 py-2 text-sm text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Play size={12} />
@@ -351,7 +352,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               ) : (
                 <button
                   onClick={handleServe}
-                  disabled={!modelInput.trim() || busy !== null || isServing || runningInstances.length === 0}
+                  disabled={!modelInput.trim() || busy !== null || isServing || runningInstances.length === 0 || !canRunModels}
                   className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-3.5 py-2 text-sm text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Radio size={12} />
@@ -363,7 +364,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
             {/* Pull button */}
             <button
               onClick={handlePull}
-              disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0}
+              disabled={!modelInput.trim() || busy !== null || runningInstances.length === 0 || !canRunModels}
               className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2 text-xs text-fg-muted hover:bg-white/[0.06] hover:text-fg-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Download size={11} />
@@ -441,10 +442,15 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
             <p className="text-xs text-red-400/80 leading-snug">{error}</p>
           )}
 
-          {/* No running instances */}
+          {/* Guidance messages */}
           {runningInstances.length === 0 && (
             <p className="text-xs text-fg-muted italic">
               Start a Colima instance first to use AI models.
+            </p>
+          )}
+          {runningInstances.length > 0 && !canRunModels && (
+            <p className="text-xs text-yellow-400/70 italic">
+              Upgrade to colima 0.10.1+ (<span className="font-mono">brew upgrade colima</span>) or restart with <span className="font-mono">--vm-type krunkit</span> to enable AI models.
             </p>
           )}
         </div>
