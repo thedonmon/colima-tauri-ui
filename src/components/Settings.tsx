@@ -35,7 +35,14 @@ export function Settings() {
       setUpdateAvailable(update);
       setChecked(true);
     } catch (e) {
-      setUpdateError(String(e));
+      const msg = String(e);
+      if (msg.includes("Could not fetch") || msg.includes("valid release JSON")) {
+        setUpdateError("Could not reach update server. A new release may still be building — try again in a few minutes.");
+      } else if (msg.includes("network") || msg.includes("fetch")) {
+        setUpdateError("Network error — check your internet connection and try again.");
+      } else {
+        setUpdateError(msg);
+      }
     } finally {
       setChecking(false);
     }
