@@ -32,6 +32,7 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [fuzzy, setFuzzy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -91,8 +92,16 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
   const displayLines = useMemo(() => {
     if (!search) return lines;
     const q = search.toLowerCase();
+    if (fuzzy) {
+      const tokens = q.split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) return lines;
+      return lines.filter((l) => {
+        const plain = stripAnsi(l.text).toLowerCase();
+        return tokens.every((t) => plain.includes(t));
+      });
+    }
     return lines.filter((l) => stripAnsi(l.text).toLowerCase().includes(q));
-  }, [lines, search]);
+  }, [lines, search, fuzzy]);
 
   const status = target.container.status ?? "";
   const isUp = status.toLowerCase().startsWith("up");
@@ -122,14 +131,26 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
               ref={searchRef}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter..."
-              className="bg-transparent text-xs text-fg placeholder-fg-faint outline-none w-32"
+              placeholder={fuzzy ? "Fuzzy filter (space-separated)..." : "Filter..."}
+              className="bg-transparent text-xs text-fg placeholder-fg-faint outline-none w-36"
             />
             {search && (
               <span className="text-xs text-fg-faint flex-shrink-0">
                 {displayLines.length}
               </span>
             )}
+            <button
+              onClick={() => setFuzzy((v) => !v)}
+              title="Fuzzy match (match all space-separated tokens)"
+              className={cn(
+                "text-[10px] font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 transition-colors",
+                fuzzy
+                  ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-400"
+                  : "bg-white/[0.03] border-white/10 text-fg-faint hover:text-fg-muted"
+              )}
+            >
+              F
+            </button>
           </div>
         )}
 
@@ -172,7 +193,7 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
           </p>
         ) : (
           displayLines.map((line, i) => (
-            <LogLineRow key={i} line={line} isMatch={!!search} />
+            <LogLineRow key={i} line={line} isMatch={!!search} search={search} fuzzy={fuzzy} />
           ))
         )}
         <div ref={bottomRef} />
@@ -181,12 +202,32 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
   );
 }
 
-function LogLineRow({ line, isMatch }: { line: LogLine; isMatch: boolean }) {
+function highlightMatches(html: string, search: string, fuzzy: boolean): string {
+  const terms = fuzzy
+    ? search.split(/\s+/).filter(Boolean)
+    : [search];
+  const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`(${escaped.join("|")})`, "gi");
+  // Replace only inside text segments, skip HTML tags
+  return html.replace(/(<[^>]*>)|([^<]+)/g, (_match, tag: string, text: string) => {
+    if (tag) return tag;
+    return text.replace(
+      re,
+      '<mark style="background:rgba(250,204,21,0.35);color:inherit;border-radius:2px;padding:0 1px">$1</mark>',
+    );
+  });
+}
+
+function LogLineRow({ line, isMatch, search, fuzzy }: { line: LogLine; isMatch: boolean; search: string; fuzzy: boolean }) {
   let html: string;
   try {
     html = ansiConverter.toHtml(line.text);
   } catch {
     html = line.text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  if (isMatch && search) {
+    html = highlightMatches(html, search, fuzzy);
   }
 
   return (
