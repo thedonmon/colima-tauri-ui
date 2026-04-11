@@ -25,4 +25,4 @@ jobs:
 
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: cargo check --manifest-path src-tauri/Cargo.toml
+      - run: cargo check --release --manifest-path src-tauri/Cargo.toml
