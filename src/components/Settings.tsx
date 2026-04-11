@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../store/settings";
 import type { DefaultVmPreset } from "../store/settings";
-import type { UpdateInfo } from "../types";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 export function Settings() {
   const { hideOnFocusLoss, notifications, skipPruneConfirm, defaultVmPreset, update } =
@@ -12,20 +12,47 @@ export function Settings() {
     update({ defaultVmPreset: { ...defaultVmPreset, ...partial } });
   };
 
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<Update | null>(null);
+  const [checked, setChecked] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
 
   const handleCheckUpdate = async () => {
     setChecking(true);
+    setChecked(false);
     setUpdateError(null);
+    setUpdateAvailable(null);
     try {
-      const info = await invoke<UpdateInfo>("check_for_updates");
-      setUpdateInfo(info);
+      const update = await check();
+      setUpdateAvailable(update);
+      setChecked(true);
     } catch (e) {
       setUpdateError(String(e));
     } finally {
       setChecking(false);
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!updateAvailable) return;
+    setInstalling(true);
+    setUpdateError(null);
+    try {
+      await updateAvailable.downloadAndInstall((progress) => {
+        if (progress.event === "Started") {
+          const len = progress.data.contentLength;
+          setDownloadProgress(len ? `Downloading (${Math.round(len / 1024)} KB)...` : "Downloading...");
+        } else if (progress.event === "Finished") {
+          setDownloadProgress("Installing...");
+        }
+      });
+      await relaunch();
+    } catch (e) {
+      setUpdateError(String(e));
+      setInstalling(false);
+      setDownloadProgress(null);
     }
   };
 
@@ -65,46 +92,50 @@ export function Settings() {
             <div>
               <p className="text-sm text-fg">Check for updates</p>
               <p className="text-xs text-fg-muted leading-relaxed">
-                {updateInfo
-                  ? `Current: v${updateInfo.currentVersion} · Latest: v${updateInfo.latestVersion}`
+                {updateAvailable
+                  ? `v${updateAvailable.version} is available`
                   : "Check if a newer version is available"}
               </p>
             </div>
-            <button
-              onClick={handleCheckUpdate}
-              disabled={checking}
-              className="text-xs px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition-all disabled:opacity-40"
-            >
-              {checking ? "Checking..." : "Check now"}
-            </button>
+            {!updateAvailable && (
+              <button
+                onClick={handleCheckUpdate}
+                disabled={checking}
+                className="text-xs px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition-all disabled:opacity-40"
+              >
+                {checking ? "Checking..." : "Check now"}
+              </button>
+            )}
           </div>
 
           {updateError && (
             <p className="text-xs text-red-400/80">{updateError}</p>
           )}
 
-          {updateInfo && !updateInfo.hasUpdate && (
+          {checked && !updateAvailable && (
             <p className="text-xs text-emerald-400/80">You're on the latest version.</p>
           )}
 
-          {updateInfo?.hasUpdate && (
+          {updateAvailable && (
             <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-3 space-y-2">
               <p className="text-sm text-blue-400 font-medium">
-                v{updateInfo.latestVersion} is available!
+                v{updateAvailable.version} is available!
               </p>
-              {updateInfo.releaseNotes && (
-                <p className="text-xs text-fg-muted leading-relaxed line-clamp-4">
-                  {updateInfo.releaseNotes}
+              {updateAvailable.body && (
+                <p className="text-xs text-fg-muted leading-relaxed line-clamp-4 whitespace-pre-line">
+                  {updateAvailable.body}
                 </p>
               )}
-              <a
-                href={updateInfo.releaseUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block text-xs text-blue-400 underline hover:text-blue-300 transition-colors"
+              {downloadProgress && (
+                <p className="text-xs text-fg-muted">{downloadProgress}</p>
+              )}
+              <button
+                onClick={handleInstallUpdate}
+                disabled={installing}
+                className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-all disabled:opacity-40"
               >
-                View release on GitHub
-              </a>
+                {installing ? (downloadProgress ?? "Installing...") : "Download & Install"}
+              </button>
             </div>
           )}
         </div>

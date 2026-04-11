@@ -119,6 +119,8 @@ pub fn run() {
         .manage(commands::WatcherState::default())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             commands::list_instances,
             commands::start_instance,
@@ -156,7 +158,6 @@ pub fn run() {
             commands::container_exec,
             commands::pull_image,
             commands::inspect_container,
-            commands::check_for_updates,
         ])
         .setup(|app| {
             // Apply frosted glass vibrancy to the main window

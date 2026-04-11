@@ -97,11 +97,4 @@ export interface ContainerStats {
   blockIo: string;
 }
 
-export interface UpdateInfo {
-  currentVersion: string;
-  latestVersion: string;
-  hasUpdate: boolean;
-  releaseUrl: string;
-  releaseNotes: string;
-}
 
