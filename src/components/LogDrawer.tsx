@@ -136,17 +136,20 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
         {logs.length === 0 ? (
           <span className="text-fg-muted">Waiting for output...</span>
         ) : (
-          logs.map((log, i) => (
-            <div
-              key={i}
-              className={cn(
-                "leading-relaxed whitespace-pre-wrap break-all",
-                log.isError ? "text-red-400/80" : "text-fg-secondary"
-              )}
-            >
-              {log.line}
-            </div>
-          ))
+          logs.map((log, i) => {
+            const isActualError = log.isError && /level=(error|fatal|warn)|error:|failed|panic/i.test(log.line);
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "leading-relaxed whitespace-pre-wrap break-all",
+                  isActualError ? "text-red-400/80" : "text-fg-secondary"
+                )}
+              >
+                {log.line}
+              </div>
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>

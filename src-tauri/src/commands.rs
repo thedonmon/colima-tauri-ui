@@ -691,6 +691,14 @@ pub async fn colima_model_setup(
     let target_profile = if is_krunkit {
         profile
     } else {
+        // Check if krunkit is installed before trying to create a krunkit profile
+        let krunkit_check = cmd("which")
+            .arg("krunkit")
+            .output()
+            .await;
+        if !krunkit_check.map(|o| o.status.success()).unwrap_or(false) {
+            return Err("krunkit is not installed. Run: brew tap slp/krunkit && brew install krunkit".to_string());
+        }
         let ai_profile = new_profile.unwrap_or_else(|| "ai".to_string());
         let mut start_args = vec![
             "start".to_string(),

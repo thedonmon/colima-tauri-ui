@@ -45,7 +45,7 @@ function hasDockerRunner(versionStr: string): boolean {
 }
 
 export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}) {
-  const { instances, version } = useColimaStore();
+  const { instances, version, fetchInstances } = useColimaStore();
   const runningInstances = instances.filter((i) => i.status.toLowerCase() === "running");
   const supportsDockerRunner = hasDockerRunner(version);
 
@@ -108,6 +108,8 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
     setBusy("setup");
     setError(null);
     setShowSetupForm(false);
+    const creatingNewProfile = !isKrunkit;
+    const targetProfile = isKrunkit ? selectedProfile : setupProfile;
     try {
       await invoke("colima_model_setup", {
         profile: selectedProfile,
@@ -117,6 +119,15 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
         memory: isKrunkit ? null : setupMemory,
         disk: isKrunkit ? null : setupDisk,
       });
+      if (creatingNewProfile) {
+        await fetchInstances();
+        // Refresh VM types and auto-select the new profile
+        try {
+          const t = await invoke<string>("get_vm_type", { profile: targetProfile });
+          setVmType((prev) => ({ ...prev, [targetProfile]: t }));
+        } catch { /* ignore */ }
+        setSelectedProfile(targetProfile);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -231,7 +242,9 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               }
               {!isKrunkit && runningInstances.length > 0 && (
                 <span className="block mt-1 text-purple-300/50">
-                  Restart with: <span className="font-mono">colima start --vm-type krunkit --model-runner docker</span>
+                  Install krunkit: <span className="font-mono">brew tap slp/krunkit && brew install krunkit</span>
+                  <br />
+                  Then click Setup to create a krunkit profile.
                 </span>
               )}
             </p>
