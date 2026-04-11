@@ -79,6 +79,8 @@ npm run tauri build
 
 The built app will be at `src-tauri/target/release/bundle/macos/Colima Manager.app`. Copy it to `/Applications`.
 
+> **Tip:** If you've previously built from source, make sure Spotlight/Dock are launching the `/Applications` copy — not the stale dev build in `src-tauri/target/`. The in-app updater only updates the `/Applications` copy.
+
 ---
 
 ## Getting Started
