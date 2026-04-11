@@ -482,7 +482,7 @@ dependencies = [
 
 [[package]]
 name = "colima-manager"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "image",
  "reqwest 0.12.28",
