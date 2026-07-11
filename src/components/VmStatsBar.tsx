@@ -12,21 +12,30 @@ export function VmStatsBar({ profile }: VmStatsBarProps) {
 
   useEffect(() => {
     let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
+    // Self-rescheduling loop instead of setInterval: the next poll is only
+    // scheduled once the previous invoke has settled, so a hung `colima ssh`
+    // call (can take minutes on a wedged VM) never stacks up pending
+    // invokes. Also skips polling while the window is hidden to the tray.
     const poll = async () => {
-      try {
-        const s = await invoke<VmStats>("get_vm_stats", { profile });
-        if (!cancelled) setStats(s);
-      } catch {
-        if (!cancelled) setStats(null);
+      if (document.visibilityState !== "hidden") {
+        try {
+          const s = await invoke<VmStats>("get_vm_stats", { profile });
+          if (!cancelled) setStats(s);
+        } catch {
+          if (!cancelled) setStats(null);
+        }
+      }
+      if (!cancelled) {
+        timeoutId = setTimeout(poll, 5000);
       }
     };
 
     poll();
-    const interval = setInterval(poll, 5000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [profile]);
 

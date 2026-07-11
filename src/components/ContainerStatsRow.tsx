@@ -12,23 +12,32 @@ export function ContainerStatsPanel({ profile }: ContainerStatsRowProps) {
 
   useEffect(() => {
     let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
+    // Self-rescheduling loop instead of setInterval: the next poll is only
+    // scheduled once the previous invoke has settled, so a hung docker/colima
+    // call never stacks up pending invokes. Also skips polling while the
+    // window is hidden to the tray.
     const poll = async () => {
-      try {
-        const s = await invoke<ContainerStats[]>("get_container_stats", { profile });
-        if (!cancelled) setStats(s);
-      } catch {
-        if (!cancelled) setStats([]);
-      } finally {
-        if (!cancelled) setLoading(false);
+      if (document.visibilityState !== "hidden") {
+        try {
+          const s = await invoke<ContainerStats[]>("get_container_stats", { profile });
+          if (!cancelled) setStats(s);
+        } catch {
+          if (!cancelled) setStats([]);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      }
+      if (!cancelled) {
+        timeoutId = setTimeout(poll, 5000);
       }
     };
 
     poll();
-    const interval = setInterval(poll, 5000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [profile]);
 

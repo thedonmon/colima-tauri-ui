@@ -13,11 +13,18 @@ use tokio::task::AbortHandle;
 /// The colima status poller is stored under the key "__poller__".
 pub struct WatcherState {
     pub handles: Mutex<HashMap<String, AbortHandle>>,
+    /// PIDs of spawned `colima model serve` children, keyed the same as `handles`
+    /// (e.g. "model-serve:<profile>"), so they can be killed directly on stop/replace
+    /// instead of relying on `pkill` pattern-matching the profile name.
+    pub serve_pids: Mutex<HashMap<String, u32>>,
 }
 
 impl Default for WatcherState {
     fn default() -> Self {
-        Self { handles: Mutex::new(HashMap::new()) }
+        Self {
+            handles: Mutex::new(HashMap::new()),
+            serve_pids: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -288,6 +295,7 @@ async fn run_streaming(
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("Failed to spawn `{}`: {}", program, e))?;
 
@@ -743,8 +751,48 @@ pub async fn colima_model_run(
     run_streaming(app, "colima", args, profile).await
 }
 
+/// Send SIGTERM to a PID directly. Used to kill `colima model serve` children —
+/// `pkill -f` pattern-matching on the profile name doesn't work for the default
+/// profile, since its command line never contains "default" (see below).
+async fn kill_pid(pid: u32) {
+    let _ = cmd("kill").args(["-TERM", &pid.to_string()]).output().await;
+}
+
+/// Best-effort fallback for grandchild processes `colima model serve` may spawn
+/// itself (killing the direct child PID above may not be enough). Matches on the
+/// command line the same way `colima` itself would distinguish profiles: named
+/// profiles pass `--profile <name>`, while the default profile passes no
+/// `--profile` flag at all. This keeps the default-profile match from ever
+/// catching a named-profile server (and vice versa).
+async fn pkill_model_serve(profile: &str) {
+    let out = cmd("pgrep").args(["-f", "colima model serve"]).output().await;
+    let Ok(out) = out else { return };
+
+    for pid_str in String::from_utf8_lossy(&out.stdout).split_whitespace() {
+        let Ok(pid) = pid_str.parse::<u32>() else { continue };
+        let Ok(ps_out) = cmd("ps").args(["-p", pid_str, "-o", "command="]).output().await else {
+            continue;
+        };
+        let command_line = String::from_utf8_lossy(&ps_out.stdout);
+        // Token-wise match so profile "dev" can never match "--profile dev2".
+        let matches = if profile == "default" {
+            !command_line.contains("--profile")
+        } else {
+            command_line
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .any(|w| w[0] == "--profile" && w[1] == profile)
+        };
+        if matches {
+            kill_pid(pid).await;
+        }
+    }
+}
+
 /// Serve a model as an OpenAI-compatible API server (long-running background task).
-/// Stores abort handle so it can be stopped via `colima_model_stop_serve`.
+/// Stores abort handle so it can be stopped via `colima_model_stop_serve`, and the
+/// spawned child's PID so it can be killed directly on stop/replace.
 #[tauri::command]
 pub async fn colima_model_serve(
     app: AppHandle,
@@ -755,10 +803,19 @@ pub async fn colima_model_serve(
     let state = app.state::<WatcherState>();
     let key = format!("model-serve:{}", profile);
 
-    // Stop any existing serve for this profile
+    // Stop any existing serve for this profile — abort the task AND kill the
+    // process itself, otherwise the old server (potentially GBs of RAM) is
+    // orphaned every time a profile's serve is replaced.
     if let Some(handle) = state.handles.lock().unwrap().remove(&key) {
         handle.abort();
     }
+    let old_pid = state.serve_pids.lock().unwrap().remove(&key);
+    if let Some(pid) = old_pid {
+        kill_pid(pid).await;
+    }
+    // Also sweep grandchild server processes (and any stale server left over
+    // from a previous app session) before starting the replacement.
+    pkill_model_serve(&profile).await;
 
     let mut args = vec!["model".to_string(), "serve".to_string(), model];
     if let Some(p) = port {
@@ -768,10 +825,60 @@ pub async fn colima_model_serve(
         args.extend(["--profile".to_string(), profile.clone()]);
     }
 
-    let app_clone = app.clone();
-    let profile_clone = profile.clone();
+    // Spawned inline (rather than via `run_streaming`) so we can read the
+    // child's PID right after spawn and record it before this command returns.
+    let mut child = cmd("colima")
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("Failed to spawn `colima`: {}", e))?;
+
+    if let Some(pid) = child.id() {
+        state.serve_pids.lock().unwrap().insert(key.clone(), pid);
+    }
+
+    // Stream stdout
+    if let Some(stdout) = child.stdout.take() {
+        let app2 = app.clone();
+        let prof = profile.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = app2.emit(
+                    "log-line",
+                    LogLine {
+                        profile: prof.clone(),
+                        line,
+                        is_error: false,
+                    },
+                );
+            }
+        });
+    }
+
+    // Stream stderr
+    if let Some(stderr) = child.stderr.take() {
+        let app2 = app.clone();
+        let prof = profile.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = app2.emit(
+                    "log-line",
+                    LogLine {
+                        profile: prof.clone(),
+                        line,
+                        is_error: true,
+                    },
+                );
+            }
+        });
+    }
+
     let handle = tokio::spawn(async move {
-        let _ = run_streaming(app_clone, "colima", args, profile_clone).await;
+        let _ = child.wait().await;
     });
 
     state
@@ -788,14 +895,21 @@ pub async fn colima_model_serve(
 pub async fn colima_model_stop_serve(app: AppHandle, profile: String) -> Result<(), String> {
     let state = app.state::<WatcherState>();
     let key = format!("model-serve:{}", profile);
-    let removed = state.handles.lock().unwrap().remove(&key);
-    if let Some(handle) = removed {
-        handle.abort();
-        // Also kill any lingering colima model serve processes for this profile
-        let _ = cmd("pkill")
-            .args(["-f", &format!("colima model serve.*{}", profile)])
-            .output()
-            .await;
+
+    let handle = state.handles.lock().unwrap().remove(&key);
+    let pid = state.serve_pids.lock().unwrap().remove(&key);
+
+    if handle.is_some() || pid.is_some() {
+        if let Some(handle) = handle {
+            handle.abort();
+        }
+        if let Some(pid) = pid {
+            kill_pid(pid).await;
+        }
+        // Also sweep for any lingering `colima model serve` process (e.g. a
+        // grandchild spawned by `colima` itself) using a pattern that can't
+        // cross-match the default profile with a named one.
+        pkill_model_serve(&profile).await;
     }
     Ok(())
 }
@@ -882,6 +996,7 @@ pub async fn start_docker_watcher(
             .args(["--context", &context, "events", "--format", "{{json .}}"])
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
+            .kill_on_drop(true)
             .spawn();
 
         let mut child = match child {
@@ -981,6 +1096,7 @@ pub async fn stream_container_logs(
             .args(["--context", &context, "logs", "--follow", "--tail", &tail_str, &cid])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .kill_on_drop(true)
             .spawn();
 
         let mut child = match child {
@@ -988,38 +1104,46 @@ pub async fn stream_container_logs(
             Err(_) => return,
         };
 
-        let stdout = child.stdout.take();
-        let stderr = child.stderr.take();
+        // Read both streams in this single task (whose AbortHandle is stored below)
+        // so that `stop_container_log_stream`'s abort actually stops the reading —
+        // previously stdout/stderr were read in separate inner tasks that outlived
+        // the abort of this outer task, causing duplicated log lines after
+        // reopening the drawer.
+        let mut stdout_lines = child.stdout.take().map(|s| BufReader::new(s).lines());
+        let mut stderr_lines = child.stderr.take().map(|s| BufReader::new(s).lines());
 
-        let app_out = app.clone();
-        let cid_out = cid.clone();
-        let stdout_task = tokio::spawn(async move {
-            if let Some(s) = stdout {
-                let mut lines = BufReader::new(s).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    let _ = app_out.emit(
-                        "container-log-line",
-                        ContainerLogLineEvent { container_id: cid_out.clone(), text: line, is_err: false },
-                    );
+        let mut stdout_done = stdout_lines.is_none();
+        let mut stderr_done = stderr_lines.is_none();
+
+        while !stdout_done || !stderr_done {
+            tokio::select! {
+                line = async { stdout_lines.as_mut().unwrap().next_line().await }, if !stdout_done => {
+                    match line {
+                        Ok(Some(text)) => {
+                            let _ = app.emit(
+                                "container-log-line",
+                                ContainerLogLineEvent { container_id: cid.clone(), text, is_err: false },
+                            );
+                        }
+                        _ => stdout_done = true,
+                    }
+                }
+                line = async { stderr_lines.as_mut().unwrap().next_line().await }, if !stderr_done => {
+                    match line {
+                        Ok(Some(text)) => {
+                            let _ = app.emit(
+                                "container-log-line",
+                                ContainerLogLineEvent { container_id: cid.clone(), text, is_err: true },
+                            );
+                        }
+                        _ => stderr_done = true,
+                    }
                 }
             }
-        });
+        }
 
-        let app_err = app.clone();
-        let cid_err = cid.clone();
-        let stderr_task = tokio::spawn(async move {
-            if let Some(s) = stderr {
-                let mut lines = BufReader::new(s).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    let _ = app_err.emit(
-                        "container-log-line",
-                        ContainerLogLineEvent { container_id: cid_err.clone(), text: line, is_err: true },
-                    );
-                }
-            }
-        });
-
-        let _ = tokio::join!(stdout_task, stderr_task);
+        // Both streams hit EOF naturally (or the child died) — reap it. If this
+        // task is aborted instead, `.kill_on_drop(true)` above kills the child.
         let _ = child.wait().await;
     });
 
@@ -1130,11 +1254,13 @@ pub struct VmStats {
 #[tauri::command]
 pub async fn get_vm_stats(profile: String) -> Result<VmStats, String> {
     // Get config (cpu count, total mem, total disk) from colima status --json
-    let status_out = cmd("colima")
-        .args(["status", "--profile", &profile, "--json"])
-        .output()
-        .await
-        .map_err(|e| format!("colima not found: {}", e))?;
+    let status_out = tokio::time::timeout(
+        tokio::time::Duration::from_secs(10),
+        cmd("colima").args(["status", "--profile", &profile, "--json"]).output(),
+    )
+    .await
+    .map_err(|_| "`colima status` timed out".to_string())?
+    .map_err(|e| format!("colima not found: {}", e))?;
 
     if !status_out.status.success() {
         let stderr = String::from_utf8_lossy(&status_out.stderr).trim().to_string();
@@ -1152,13 +1278,17 @@ pub async fn get_vm_stats(profile: String) -> Result<VmStats, String> {
     let total_disk_bytes = cfg["disk"].as_u64().unwrap_or(0);
 
     // SSH into the VM to get live usage: free -m + df -h /
-    let ssh_out = cmd("colima")
-        .args(["ssh", "--profile", &profile, "--", "sh", "-c",
-            "free -m | awk '/^Mem:/{print $3}'; df -h / | awk 'NR==2{print $3}'"
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("colima ssh failed: {}", e))?;
+    let ssh_out = tokio::time::timeout(
+        tokio::time::Duration::from_secs(10),
+        cmd("colima")
+            .args(["ssh", "--profile", &profile, "--", "sh", "-c",
+                "free -m | awk '/^Mem:/{print $3}'; df -h / | awk 'NR==2{print $3}'"
+            ])
+            .output(),
+    )
+    .await
+    .map_err(|_| "`colima ssh` timed out".to_string())?
+    .map_err(|e| format!("colima ssh failed: {}", e))?;
 
     let ssh_str = String::from_utf8_lossy(&ssh_out.stdout);
     let lines: Vec<&str> = ssh_str.trim().lines().collect();
@@ -1181,11 +1311,15 @@ pub async fn get_vm_stats(profile: String) -> Result<VmStats, String> {
     }
 
     // CPU: read /proc/loadavg for a quick 1-min load average
-    let cpu_out = cmd("colima")
-        .args(["ssh", "--profile", &profile, "--", "cat", "/proc/loadavg"])
-        .output()
-        .await
-        .ok();
+    let cpu_out = tokio::time::timeout(
+        tokio::time::Duration::from_secs(10),
+        cmd("colima")
+            .args(["ssh", "--profile", &profile, "--", "cat", "/proc/loadavg"])
+            .output(),
+    )
+    .await
+    .ok()
+    .and_then(|r| r.ok());
     let cpu_cores = cfg["cpu"].as_u64().unwrap_or(1) as f64;
     let cpu_usage = cpu_out
         .and_then(|o| {
@@ -1232,11 +1366,15 @@ pub struct ContainerStats {
 #[tauri::command]
 pub async fn get_container_stats(profile: String) -> Result<Vec<ContainerStats>, String> {
     let context = profile_to_context(&profile);
-    let out = cmd("docker")
-        .args(["--context", &context, "stats", "--no-stream", "--format", "{{json .}}"])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
+    let out = tokio::time::timeout(
+        tokio::time::Duration::from_secs(10),
+        cmd("docker")
+            .args(["--context", &context, "stats", "--no-stream", "--format", "{{json .}}"])
+            .output(),
+    )
+    .await
+    .map_err(|_| "`docker stats` timed out".to_string())?
+    .map_err(|e| format!("docker not found: {}", e))?;
 
     if !out.status.success() {
         return Ok(vec![]);
