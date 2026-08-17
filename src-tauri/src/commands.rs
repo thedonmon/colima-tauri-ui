@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::process::Stdio;
+use std::process::{Output, Stdio};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -43,10 +44,72 @@ pub struct DockerEventPayload {
 const EXTRA_PATH: &str =
     "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 
+/// Timeout for one-shot CLI calls. Anything slower than this means docker or the
+/// VM is wedged, and waiting longer only lets callers queue up behind it.
+const CMD_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Timeout for calls that legitimately take a while (prune sweeps, model pulls).
+const CMD_TIMEOUT_SLOW: Duration = Duration::from_secs(300);
+
+/// Children are spawned with `kill_on_drop` so that dropping the future — which is
+/// exactly what a timeout does — actually terminates the process. Tokio defaults
+/// this to `false`, so a timed-out `.output()` used to leave the child running
+/// forever. Those orphans stay parented to this app, so macOS bills their memory
+/// to Colima Manager.
 fn cmd(program: &str) -> Command {
     let mut c = Command::new(program);
     c.env("PATH", EXTRA_PATH);
+    c.kill_on_drop(true);
     c
+}
+
+/// Run a command to completion under a hard timeout.
+///
+/// Every one-shot CLI call goes through here. Without a timeout a wedged Docker
+/// daemon leaves `.output()` pending forever, and because the frontend re-fires
+/// these on every Docker event (health-check exec events alone are ~1/s), hung
+/// `docker` children stacked up without bound until the app's memory ran away.
+async fn run_timeout<I, S>(program: &str, args: I, timeout: Duration) -> Result<Output, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut c = cmd(program);
+    c.args(args);
+    match tokio::time::timeout(timeout, c.output()).await {
+        Err(_) => Err(format!(
+            "`{}` timed out after {}s — the daemon or VM is not responding",
+            program,
+            timeout.as_secs()
+        )),
+        // Keeps the "<program> not found" wording that the frontend's
+        // `isNotFound` check keys on to show the setup guide.
+        Ok(Err(e)) => Err(format!("{} not found ({})", program, e)),
+        Ok(Ok(out)) => Ok(out),
+    }
+}
+
+/// `run_timeout` with the standard timeout.
+async fn run<I, S>(program: &str, args: I) -> Result<Output, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    run_timeout(program, args, CMD_TIMEOUT).await
+}
+
+/// Returns stderr if the command failed, else `Ok(stdout)` — the shape most of
+/// the docker wrappers below want.
+fn stdout_or_stderr(out: Output, what: &str) -> Result<String, String> {
+    if out.status.success() {
+        return Ok(String::from_utf8_lossy(&out.stdout).trim().to_string());
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    Err(if stderr.is_empty() {
+        format!("`{}` failed (status {})", what, out.status.code().unwrap_or(-1))
+    } else {
+        stderr
+    })
 }
 
 fn extract_label(labels: &str, key: &str) -> String {
@@ -125,11 +188,7 @@ pub struct DockerContext {
 
 #[tauri::command]
 pub async fn list_instances() -> Result<Vec<ColimaInstance>, String> {
-    let out = cmd("colima")
-        .args(["list"])
-        .output()
-        .await
-        .map_err(|e| format!("colima not found — is it installed? ({})", e))?;
+    let out = run("colima", ["list"]).await?;
 
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
@@ -261,27 +320,217 @@ pub async fn force_stop_instance(app: AppHandle, profile: String) -> Result<(), 
     .await
 }
 
-/// Kill stale Lima/QEMU processes for a profile (nuclear recovery option).
+// ─── Crash Recovery ───────────────────────────────────────────────────────────
+
+async fn read_pid_file(path: &str) -> Option<u32> {
+    tokio::fs::read_to_string(path).await.ok()?.trim().parse().ok()
+}
+
+/// PIDs whose full command line matches `pattern`.
+async fn pgrep(pattern: &str) -> Vec<u32> {
+    let Ok(out) = run("pgrep", ["-f", pattern]).await else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .filter_map(|s| s.parse().ok())
+        .collect()
+}
+
+async fn pid_alive(pid: u32) -> bool {
+    run("kill", ["-0", &pid.to_string()])
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// SIGTERM, then SIGKILL if it is still there. Returns whether the process died.
+async fn terminate_pid(pid: u32) -> bool {
+    kill_pid(pid).await;
+    tokio::time::sleep(Duration::from_millis(700)).await;
+    if !pid_alive(pid).await {
+        return true;
+    }
+    let _ = run("kill", ["-KILL", &pid.to_string()]).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    !pid_alive(pid).await
+}
+
+/// Report a recovery step to the log drawer, which is already open at this point.
+fn report(app: &AppHandle, profile: &str, line: impl Into<String>, is_error: bool) {
+    let _ = app.emit(
+        "log-line",
+        LogLine {
+            profile: profile.to_string(),
+            line: line.into(),
+            is_error,
+        },
+    );
+}
+
+/// One leftover process that recovery has judged to be an orphan.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct StaleProcess {
+    /// "usernet" | "hostagent" | "qemu"
+    pub kind: String,
+    pub pid: u32,
+    /// Human-readable reason this counts as stale.
+    pub detail: String,
+}
+
+/// Lima instance directory names under `~/.colima/_lima` (colima, colima-ai, …).
+async fn lima_instances(home: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let Ok(mut dirs) = tokio::fs::read_dir(format!("{}/.colima/_lima", home)).await else {
+        return out;
+    };
+    while let Ok(Some(e)) = dirs.next_entry().await {
+        let name = e.file_name().to_string_lossy().to_string();
+        // Skip Lima's own `_config` / `_disks` / `_networks` bookkeeping dirs.
+        if name.starts_with("colima") && e.path().is_dir() {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// Whether an instance still has live processes owning its sockets.
+async fn instance_is_live(home: &str, instance: &str) -> bool {
+    for pidfile in ["vz.pid", "ha.pid"] {
+        let path = format!("{}/.colima/_lima/{}/{}", home, instance, pidfile);
+        if let Some(pid) = read_pid_file(&path).await {
+            if pid_alive(pid).await {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Whether any Colima instance on this machine is still up.
+async fn any_instance_live(home: &str) -> bool {
+    for instance in lima_instances(home).await {
+        if instance_is_live(home, &instance).await {
+            return true;
+        }
+    }
+    false
+}
+
+/// Find leftover processes from an unclean shutdown, without touching anything.
+///
+/// Nothing under Lima is safe to touch while a VM is up, so this reports only once
+/// every instance is down — which is also the only moment cleaning up helps.
+///
+/// That gate is the whole safety property. `limactl usernet` is shared by every
+/// instance and runs as a live *pair*, while Lima's pidfile names only one of
+/// them. It is tempting to treat the unnamed process as a provable orphan, but it
+/// is not one: killing it tears down networking for the running VM and takes
+/// `docker.sock` with it, leaving Colima reporting "Running" with no connectivity.
+///
+/// Once everything is stopped the question disappears — nothing under Lima should
+/// still be running, and usernet is recreated by the next `colima start`.
+async fn scan_stale(home: &str) -> Vec<StaleProcess> {
+    if any_instance_live(home).await {
+        return Vec::new();
+    }
+
+    let mut found = Vec::new();
+
+    for pid in pgrep("limactl usernet").await {
+        found.push(StaleProcess {
+            kind: "usernet".into(),
+            pid,
+            detail: "still running with every Colima instance stopped".into(),
+        });
+    }
+
+    for instance in lima_instances(home).await {
+        // Matched on the `--pidfile` path so "colima-dev" can never catch "colima-dev2".
+        let ha_path = format!("{}/.colima/_lima/{}/ha.pid", home, instance);
+        for pid in pgrep(&format!("limactl hostagent .*--pidfile {}", ha_path)).await {
+            found.push(StaleProcess {
+                kind: "hostagent".into(),
+                pid,
+                detail: format!("{} hostagent running while the instance is stopped", instance),
+            });
+        }
+
+        // QEMU-backed VMs. vz instances have no qemu process, so this is a no-op there.
+        for pid in pgrep(&format!("qemu.*{}", instance)).await {
+            found.push(StaleProcess {
+                kind: "qemu".into(),
+                pid,
+                detail: format!("stale qemu process for {}", instance),
+            });
+        }
+    }
+
+    found
+}
+
+/// Read-only check so the UI can offer recovery *before* a start is attempted,
+/// instead of only after one has already failed.
 #[tauri::command]
-pub async fn kill_stale_processes(profile: String) -> Result<String, String> {
-    // Kill lima processes for this profile
-    let lima_pattern = format!("lima/{}", if profile == "default" { "colima".to_string() } else { format!("colima-{}", profile) });
-    let _ = Command::new("pkill")
-        .args(["-f", &lima_pattern])
-        .output()
-        .await;
+pub async fn scan_stale_processes() -> Result<Vec<StaleProcess>, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME env var not set".to_string())?;
+    Ok(scan_stale(&home).await)
+}
 
-    // Also kill any qemu processes for this profile
-    let qemu_pattern = format!("qemu.*{}", if profile == "default" { "colima".to_string() } else { format!("colima-{}", profile) });
-    let _ = Command::new("pkill")
-        .args(["-f", &qemu_pattern])
-        .output()
-        .await;
+/// Recover from an unclean shutdown (host crash, force power-off).
+///
+/// Kills only what [`scan_stale`] could prove is an orphan, and removes an
+/// instance's sockets only once nothing is left alive to own them — deleting a
+/// healthy VM's `ssh.sock` would break it. Every decision is emitted as a log line
+/// so the outcome is inspectable rather than a silent nuke.
+#[tauri::command]
+pub async fn kill_stale_processes(app: AppHandle, profile: String) -> Result<String, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME env var not set".to_string())?;
+    let mut cleaned: Vec<String> = Vec::new();
 
-    // Brief pause for processes to die
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    report(&app, &profile, "Scanning for leftovers from an unclean shutdown...", false);
 
-    Ok(format!("Killed stale processes matching '{}'", lima_pattern))
+    let stale = scan_stale(&home).await;
+    if stale.is_empty() {
+        report(&app, &profile, "  no orphaned Lima processes found", false);
+    }
+    for s in &stale {
+        report(&app, &profile, format!("  orphaned {} pid {} — {} — killing", s.kind, s.pid, s.detail), false);
+        if terminate_pid(s.pid).await {
+            cleaned.push(format!("{} {}", s.kind, s.pid));
+        } else {
+            report(&app, &profile, format!("  could not kill {} pid {}", s.kind, s.pid), true);
+        }
+    }
+
+    // Sockets, per instance, only where nothing is left alive to own them.
+    for instance in lima_instances(&home).await {
+        if instance_is_live(&home, &instance).await {
+            report(&app, &profile, format!("  {} still has live processes — leaving its sockets alone", instance), false);
+            continue;
+        }
+        let dir = format!("{}/.colima/_lima/{}", home, instance);
+        let Ok(mut entries) = tokio::fs::read_dir(&dir).await else { continue };
+        while let Ok(Some(e)) = entries.next_entry().await {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("sock") {
+                continue;
+            }
+            if tokio::fs::remove_file(&path).await.is_ok() {
+                report(&app, &profile, format!("  removed stale socket {}", path.display()), false);
+                cleaned.push(format!("socket {}", path.display()));
+            }
+        }
+    }
+
+    let summary = if cleaned.is_empty() {
+        "Nothing stale found — the problem is something else.".to_string()
+    } else {
+        format!("Cleaned up {} item(s). Try starting again.", cleaned.len())
+    };
+    report(&app, &profile, &summary, false);
+    Ok(summary)
 }
 
 /// Streams stdout/stderr of a child process as `log-line` events.
@@ -355,21 +604,17 @@ async fn run_streaming(
 
 #[tauri::command]
 pub async fn get_version() -> Result<String, String> {
-    let out = cmd("colima")
-        .args(["version"])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
+    let out = run("colima", ["version"]).await?;
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 #[tauri::command]
 pub async fn get_docker_contexts() -> Result<Vec<DockerContext>, String> {
-    let out = cmd("docker")
-        .args(["context", "ls", "--format", "{{.Name}}\t{{.Current}}\t{{.DockerEndpoint}}"])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found ({})", e))?;
+    let out = run(
+        "docker",
+        ["context", "ls", "--format", "{{.Name}}\t{{.Current}}\t{{.DockerEndpoint}}"],
+    )
+    .await?;
 
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     let mut contexts = Vec::new();
@@ -426,20 +671,8 @@ pub async fn container_action(
         return Err(format!("invalid action '{}'", action));
     }
 
-    let out = cmd("docker")
-        .args(["--context", &context, &action, &container_id])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
-
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("`docker {}` failed (status {})", action, out.status.code().unwrap_or(-1))
-        } else {
-            stderr
-        });
-    }
+    let out = run("docker", ["--context", &context, &action, &container_id]).await?;
+    stdout_or_stderr(out, &format!("docker {}", action))?;
     Ok(())
 }
 
@@ -454,11 +687,11 @@ pub async fn get_container_logs(
 ) -> Result<Vec<ContainerLogLine>, String> {
     let tail_str = tail.to_string();
 
-    let out = cmd("docker")
-        .args(["--context", &context, "logs", "--tail", &tail_str, &container_id])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
+    let out = run(
+        "docker",
+        ["--context", &context, "logs", "--tail", &tail_str, &container_id],
+    )
+    .await?;
 
     let mut lines: Vec<ContainerLogLine> = Vec::new();
     for l in String::from_utf8_lossy(&out.stdout).lines() {
@@ -480,11 +713,7 @@ async fn fetch_containers(context: &str, show_all: bool) -> Result<Vec<DockerCon
     if show_all {
         args.push("--all");
     }
-    let out = cmd("docker")
-        .args(&args)
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
+    let out = run("docker", &args).await?;
 
     if !out.status.success() {
         return Ok(vec![]);
@@ -543,11 +772,11 @@ pub struct DockerImage {
 #[tauri::command]
 pub async fn get_images(profile: String) -> Result<Vec<DockerImage>, String> {
     let context = profile_to_context(&profile);
-    let out = cmd("docker")
-        .args(["--context", &context, "images", "--format", "{{json .}}"])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
+    let out = run(
+        "docker",
+        ["--context", &context, "images", "--format", "{{json .}}"],
+    )
+    .await?;
 
     if !out.status.success() {
         return Ok(vec![]);
@@ -570,37 +799,27 @@ pub async fn get_images(profile: String) -> Result<Vec<DockerImage>, String> {
 #[tauri::command]
 pub async fn prune_images(profile: String) -> Result<String, String> {
     let context = profile_to_context(&profile);
-    let out = cmd("docker")
-        .args(["--context", &context, "image", "prune", "--force"])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
-
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        return Err(stderr);
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    // Pruning a large image cache legitimately outruns the standard timeout.
+    let out = run_timeout(
+        "docker",
+        ["--context", &context, "image", "prune", "--force"],
+        CMD_TIMEOUT_SLOW,
+    )
+    .await?;
+    stdout_or_stderr(out, "docker image prune")
 }
 
 /// Remove an image by ID from a Colima instance's Docker context.
 #[tauri::command]
 pub async fn remove_image(profile: String, image_id: String) -> Result<(), String> {
     let context = profile_to_context(&profile);
-    let out = cmd("docker")
-        .args(["--context", &context, "rmi", &image_id])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
-
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("`docker rmi` failed (status {})", out.status.code().unwrap_or(-1))
-        } else {
-            stderr
-        });
-    }
+    let out = run_timeout(
+        "docker",
+        ["--context", &context, "rmi", &image_id],
+        CMD_TIMEOUT_SLOW,
+    )
+    .await?;
+    stdout_or_stderr(out, "docker rmi")?;
     Ok(())
 }
 
@@ -620,11 +839,11 @@ pub struct DockerVolume {
 #[tauri::command]
 pub async fn get_volumes(profile: String) -> Result<Vec<DockerVolume>, String> {
     let context = profile_to_context(&profile);
-    let out = cmd("docker")
-        .args(["--context", &context, "volume", "ls", "--format", "{{json .}}"])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
+    let out = run(
+        "docker",
+        ["--context", &context, "volume", "ls", "--format", "{{json .}}"],
+    )
+    .await?;
 
     if !out.status.success() {
         return Ok(vec![]);
@@ -647,37 +866,25 @@ pub async fn get_volumes(profile: String) -> Result<Vec<DockerVolume>, String> {
 #[tauri::command]
 pub async fn prune_volumes(profile: String) -> Result<String, String> {
     let context = profile_to_context(&profile);
-    let out = cmd("docker")
-        .args(["--context", &context, "volume", "prune", "--force"])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
-
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        return Err(stderr);
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    let out = run_timeout(
+        "docker",
+        ["--context", &context, "volume", "prune", "--force"],
+        CMD_TIMEOUT_SLOW,
+    )
+    .await?;
+    stdout_or_stderr(out, "docker volume prune")
 }
 
 /// Remove a named volume from a Colima instance's Docker context.
 #[tauri::command]
 pub async fn remove_volume(profile: String, volume_name: String) -> Result<(), String> {
     let context = profile_to_context(&profile);
-    let out = cmd("docker")
-        .args(["--context", &context, "volume", "rm", &volume_name])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
-
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("`docker volume rm` failed (status {})", out.status.code().unwrap_or(-1))
-        } else {
-            stderr
-        });
-    }
+    let out = run(
+        "docker",
+        ["--context", &context, "volume", "rm", &volume_name],
+    )
+    .await?;
+    stdout_or_stderr(out, "docker volume rm")?;
     Ok(())
 }
 
@@ -700,10 +907,7 @@ pub async fn colima_model_setup(
         profile
     } else {
         // Check if krunkit is installed before trying to create a krunkit profile
-        let krunkit_check = cmd("which")
-            .arg("krunkit")
-            .output()
-            .await;
+        let krunkit_check = run("which", ["krunkit"]).await;
         if !krunkit_check.map(|o| o.status.success()).unwrap_or(false) {
             return Err("krunkit is not installed. Run: brew tap slp/krunkit && brew install krunkit".to_string());
         }
@@ -755,7 +959,7 @@ pub async fn colima_model_run(
 /// `pkill -f` pattern-matching on the profile name doesn't work for the default
 /// profile, since its command line never contains "default" (see below).
 async fn kill_pid(pid: u32) {
-    let _ = cmd("kill").args(["-TERM", &pid.to_string()]).output().await;
+    let _ = run("kill", ["-TERM", &pid.to_string()]).await;
 }
 
 /// Best-effort fallback for grandchild processes `colima model serve` may spawn
@@ -765,12 +969,19 @@ async fn kill_pid(pid: u32) {
 /// `--profile` flag at all. This keeps the default-profile match from ever
 /// catching a named-profile server (and vice versa).
 async fn pkill_model_serve(profile: &str) {
-    let out = cmd("pgrep").args(["-f", "colima model serve"]).output().await;
+    let out = run("pgrep", ["-f", "colima model serve"]).await;
     let Ok(out) = out else { return };
 
-    for pid_str in String::from_utf8_lossy(&out.stdout).split_whitespace() {
+    // Collect first: `pgrep`'s stdout borrows `out`, and awaiting per-PID below
+    // would otherwise hold that borrow across the await points.
+    let pids: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+
+    for pid_str in pids {
         let Ok(pid) = pid_str.parse::<u32>() else { continue };
-        let Ok(ps_out) = cmd("ps").args(["-p", pid_str, "-o", "command="]).output().await else {
+        let Ok(ps_out) = run("ps", ["-p", &pid_str, "-o", "command="]).await else {
             continue;
         };
         let command_line = String::from_utf8_lossy(&ps_out.stdout);
@@ -935,17 +1146,13 @@ pub async fn colima_model_list(profile: String) -> Result<String, String> {
     if profile != "default" {
         args.extend(["--profile".to_string(), profile]);
     }
-    let output = cmd("colima")
-        .args(&args)
-        .output()
-        .await
-        .map_err(|e| format!("failed to run colima model list: {}", e))?;
+    let out = run("colima", &args).await?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
         return Err(stderr);
     }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
 /// Read a profile's colima.yaml and extract the vmType field.
@@ -1188,7 +1395,7 @@ pub async fn start_colima_poller(
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-            if let Ok(out) = cmd("colima").args(["list"]).output().await {
+            if let Ok(out) = run("colima", ["list"]).await {
                 let raw = String::from_utf8_lossy(&out.stdout).to_string();
                 // Only parse + emit when the raw output changed
                 if raw != last_raw {
@@ -1254,21 +1461,9 @@ pub struct VmStats {
 #[tauri::command]
 pub async fn get_vm_stats(profile: String) -> Result<VmStats, String> {
     // Get config (cpu count, total mem, total disk) from colima status --json
-    let status_out = tokio::time::timeout(
-        tokio::time::Duration::from_secs(10),
-        cmd("colima").args(["status", "--profile", &profile, "--json"]).output(),
-    )
-    .await
-    .map_err(|_| "`colima status` timed out".to_string())?
-    .map_err(|e| format!("colima not found: {}", e))?;
-
+    let status_out = run("colima", ["status", "--profile", &profile, "--json"]).await?;
     if !status_out.status.success() {
-        let stderr = String::from_utf8_lossy(&status_out.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("`colima status` failed (status {})", status_out.status.code().unwrap_or(-1))
-        } else {
-            stderr
-        });
+        return Err(stdout_or_stderr(status_out, "colima status").unwrap_err());
     }
 
     let cfg: serde_json::Value = serde_json::from_slice(&status_out.stdout)
@@ -1278,17 +1473,14 @@ pub async fn get_vm_stats(profile: String) -> Result<VmStats, String> {
     let total_disk_bytes = cfg["disk"].as_u64().unwrap_or(0);
 
     // SSH into the VM to get live usage: free -m + df -h /
-    let ssh_out = tokio::time::timeout(
-        tokio::time::Duration::from_secs(10),
-        cmd("colima")
-            .args(["ssh", "--profile", &profile, "--", "sh", "-c",
-                "free -m | awk '/^Mem:/{print $3}'; df -h / | awk 'NR==2{print $3}'"
-            ])
-            .output(),
+    let ssh_out = run(
+        "colima",
+        [
+            "ssh", "--profile", &profile, "--", "sh", "-c",
+            "free -m | awk '/^Mem:/{print $3}'; df -h / | awk 'NR==2{print $3}'",
+        ],
     )
-    .await
-    .map_err(|_| "`colima ssh` timed out".to_string())?
-    .map_err(|e| format!("colima ssh failed: {}", e))?;
+    .await?;
 
     let ssh_str = String::from_utf8_lossy(&ssh_out.stdout);
     let lines: Vec<&str> = ssh_str.trim().lines().collect();
@@ -1311,15 +1503,12 @@ pub async fn get_vm_stats(profile: String) -> Result<VmStats, String> {
     }
 
     // CPU: read /proc/loadavg for a quick 1-min load average
-    let cpu_out = tokio::time::timeout(
-        tokio::time::Duration::from_secs(10),
-        cmd("colima")
-            .args(["ssh", "--profile", &profile, "--", "cat", "/proc/loadavg"])
-            .output(),
+    let cpu_out = run(
+        "colima",
+        ["ssh", "--profile", &profile, "--", "cat", "/proc/loadavg"],
     )
     .await
-    .ok()
-    .and_then(|r| r.ok());
+    .ok();
     let cpu_cores = cfg["cpu"].as_u64().unwrap_or(1) as f64;
     let cpu_usage = cpu_out
         .and_then(|o| {
@@ -1366,15 +1555,11 @@ pub struct ContainerStats {
 #[tauri::command]
 pub async fn get_container_stats(profile: String) -> Result<Vec<ContainerStats>, String> {
     let context = profile_to_context(&profile);
-    let out = tokio::time::timeout(
-        tokio::time::Duration::from_secs(10),
-        cmd("docker")
-            .args(["--context", &context, "stats", "--no-stream", "--format", "{{json .}}"])
-            .output(),
+    let out = run(
+        "docker",
+        ["--context", &context, "stats", "--no-stream", "--format", "{{json .}}"],
     )
-    .await
-    .map_err(|_| "`docker stats` timed out".to_string())?
-    .map_err(|e| format!("docker not found: {}", e))?;
+    .await?;
 
     if !out.status.success() {
         return Ok(vec![]);
@@ -1456,19 +1641,9 @@ pub async fn inspect_container(
     container_id: String,
 ) -> Result<serde_json::Value, String> {
     let context = profile_to_context(&profile);
-    let out = cmd("docker")
-        .args(["--context", &context, "inspect", &container_id])
-        .output()
-        .await
-        .map_err(|e| format!("docker not found: {}", e))?;
-
+    let out = run("docker", ["--context", &context, "inspect", &container_id]).await?;
     if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("`docker inspect` failed (status {})", out.status.code().unwrap_or(-1))
-        } else {
-            stderr
-        });
+        return Err(stdout_or_stderr(out, "docker inspect").unwrap_err());
     }
 
     let value: serde_json::Value = serde_json::from_slice(&out.stdout)
@@ -1510,5 +1685,117 @@ pub async fn restart_instance_simple(app: AppHandle, profile: String) -> Result<
         profile,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for the runaway-memory bug.
+    ///
+    /// Tokio defaults `kill_on_drop` to `false`, so a timed-out `.output()` used
+    /// to leave its child running forever — still parented to this app, so macOS
+    /// billed the memory to Colima Manager. The frontend re-fires these calls on
+    /// every Docker event, so a wedged daemon grew the orphan pile without bound.
+    /// `cmd()` now sets `kill_on_drop`, which means the timeout must reap it.
+    #[tokio::test]
+    async fn timed_out_command_kills_its_child() {
+        // A distinctive duration so the pgrep below can't match anything else.
+        const MARKER: &str = "4242";
+
+        let err = run_timeout("sleep", [MARKER], Duration::from_millis(200))
+            .await
+            .expect_err("expected the call to time out");
+        assert!(err.contains("timed out"), "unexpected error: {}", err);
+
+        // Give the SIGKILL a moment to land before checking.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let survivors = run("pgrep", ["-f", &format!("^sleep {}$", MARKER)])
+            .await
+            .expect("pgrep should run");
+        assert!(
+            survivors.stdout.is_empty(),
+            "timed-out child survived as pid(s): {}",
+            String::from_utf8_lossy(&survivors.stdout).trim()
+        );
+    }
+
+    /// The timeout must not fire for a command that finishes in time.
+    #[tokio::test]
+    async fn fast_command_returns_its_output() {
+        let out = run("echo", ["hello"]).await.expect("echo should succeed");
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hello");
+    }
+
+    /// A PID above macOS's PID_MAX, so `kill -0` can never find it.
+    const DEAD_PID: &str = "999999";
+
+    async fn fake_home(tag: &str) -> std::path::PathBuf {
+        let home = std::env::temp_dir().join(format!("cm-test-{}-{}", std::process::id(), tag));
+        tokio::fs::remove_dir_all(&home).await.ok();
+        tokio::fs::create_dir_all(home.join(".colima/_lima/colima")).await.unwrap();
+        home
+    }
+
+    /// Regression test for the outage this recovery path caused.
+    ///
+    /// It used to treat the `limactl usernet` process that no pidfile named as a
+    /// provable orphan. It is not one — usernet runs as a live pair, so killing
+    /// the unnamed process tore down networking for the *running* VM and killed
+    /// docker.sock. Nothing may be reported while any instance is still up.
+    #[tokio::test]
+    async fn scan_reports_nothing_while_an_instance_is_live() {
+        let home = fake_home("live").await;
+        // Our own PID is unambiguously alive.
+        tokio::fs::write(
+            home.join(".colima/_lima/colima/ha.pid"),
+            format!("{}\n", std::process::id()),
+        )
+        .await
+        .unwrap();
+
+        let h = home.to_string_lossy().to_string();
+        assert!(instance_is_live(&h, "colima").await, "own PID must read as live");
+        assert!(any_instance_live(&h).await);
+        assert!(
+            scan_stale(&h).await.is_empty(),
+            "a live instance must veto every finding, however stale it looks"
+        );
+
+        tokio::fs::remove_dir_all(&home).await.ok();
+    }
+
+    /// The gate must actually open once everything is stopped, or recovery is
+    /// unreachable in exactly the case it exists for.
+    #[tokio::test]
+    async fn stopped_instance_does_not_read_as_live() {
+        let home = fake_home("dead").await;
+        tokio::fs::write(home.join(".colima/_lima/colima/ha.pid"), DEAD_PID)
+            .await
+            .unwrap();
+
+        let h = home.to_string_lossy().to_string();
+        assert!(!instance_is_live(&h, "colima").await);
+        assert!(!any_instance_live(&h).await);
+
+        tokio::fs::remove_dir_all(&home).await.ok();
+    }
+
+    /// Lima's own bookkeeping dirs must not be mistaken for instances.
+    #[tokio::test]
+    async fn lima_instances_skips_bookkeeping_dirs() {
+        let home = fake_home("dirs").await;
+        let lima = home.join(".colima/_lima");
+        for d in ["_config", "_disks", "_networks", "colima-ai"] {
+            tokio::fs::create_dir_all(lima.join(d)).await.unwrap();
+        }
+
+        let mut found = lima_instances(&home.to_string_lossy()).await;
+        found.sort();
+        assert_eq!(found, vec!["colima".to_string(), "colima-ai".to_string()]);
+
+        tokio::fs::remove_dir_all(&home).await.ok();
+    }
 }
 

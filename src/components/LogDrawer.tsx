@@ -48,10 +48,12 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
-  const isStuck = useMemo(
-    () => !isRunningCommand && lastCommandFailed && detectStuckVM(logs),
-    [isRunningCommand, lastCommandFailed, logs]
-  );
+  // Any failed command makes recovery reachable. The pattern list only decides how
+  // confidently it is worded — previously a match was *required*, so a failure
+  // phrased any other way (or a start that hung and never failed at all) left no
+  // way in to the recovery actions.
+  const failed = !isRunningCommand && lastCommandFailed;
+  const looksStuck = useMemo(() => detectStuckVM(logs), [logs]);
 
   const profile = activeProfile ?? failedProfileRef.current;
 
@@ -103,11 +105,13 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
       </div>
 
       {/* Recovery banner */}
-      {isStuck && profile && !recovering && (
+      {failed && profile && !recovering && (
         <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-500/[0.08] border-b border-amber-500/20">
           <AlertTriangle size={14} className="text-amber-400 shrink-0" />
           <span className="text-xs text-amber-300/90 flex-1">
-            VM appears stuck from a previous crash.
+            {looksStuck
+              ? "VM appears stuck from a previous crash."
+              : "That command failed. If the VM is wedged, these can recover it."}
           </span>
           <button
             onClick={handleForceStop}

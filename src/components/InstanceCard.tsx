@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Cpu,
@@ -98,17 +98,30 @@ export function InstanceCard({
       .finally(() => setVolumesLoading(false));
   };
 
-  const silentRefresh = () => {
-    if (!isRunning) return;
-    if (showContainers)
-      invoke<DockerContainer[]>("get_containers", { profile: instance.profile, showAll: showStopped })
-        .then(setContainers).catch(() => {});
-    if (showImages)
-      invoke<DockerImage[]>("get_images", { profile: instance.profile })
-        .then(setImages).catch(() => {});
-    if (showVolumes)
-      invoke<DockerVolume[]>("get_volumes", { profile: instance.profile })
-        .then(setVolumes).catch(() => {});
+  // Docker events arrive continuously — health-check exec events alone are about
+  // one per second — and each one used to fire an unguarded refresh. Every one of
+  // these invokes spawns a `docker` child process, so when the daemon got slow
+  // they piled up faster than they finished. Keep at most one refresh in flight.
+  const refreshing = useRef(false);
+
+  const silentRefresh = async () => {
+    if (!isRunning || refreshing.current) return;
+    refreshing.current = true;
+    try {
+      await Promise.all([
+        showContainers &&
+          invoke<DockerContainer[]>("get_containers", { profile: instance.profile, showAll: showStopped })
+            .then(setContainers).catch(() => {}),
+        showImages &&
+          invoke<DockerImage[]>("get_images", { profile: instance.profile })
+            .then(setImages).catch(() => {}),
+        showVolumes &&
+          invoke<DockerVolume[]>("get_volumes", { profile: instance.profile })
+            .then(setVolumes).catch(() => {}),
+      ]);
+    } finally {
+      refreshing.current = false;
+    }
   };
 
   useEffect(() => {
@@ -151,7 +164,10 @@ export function InstanceCard({
 
   useEffect(() => {
     if (tick === 0 || !isRunning) return;
-    silentRefresh();
+    // Collapse bursts of Docker events into one refresh — the cleanup cancels the
+    // pending timer whenever another event lands before it fires.
+    const t = setTimeout(silentRefresh, 400);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 

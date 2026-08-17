@@ -97,4 +97,11 @@ export interface ContainerStats {
   blockIo: string;
 }
 
+/** A leftover Lima process from an unclean shutdown, as found by `scan_stale_processes`. */
+export interface StaleProcess {
+  kind: string; // "usernet" | "hostagent" | "qemu"
+  pid: number;
+  detail: string;
+}
+
 

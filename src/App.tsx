@@ -17,6 +17,7 @@ import { ContainerLogsDrawer } from "./components/ContainerLogsDrawer";
 import { DockerDesktopSection } from "./components/DockerDesktopSection";
 import { ModelSection } from "./components/ModelSection";
 import { SetupGuide } from "./components/SetupGuide";
+import { StaleProcessBanner } from "./components/StaleProcessBanner";
 import { Settings } from "./components/Settings";
 import { ContainerInspect } from "./components/ContainerInspect";
 import type { ColimaInstance, DockerEvent, LogLine, ContainerLogsTarget } from "./types";
@@ -183,6 +184,13 @@ export default function App() {
             <div className="px-3 py-3 space-y-3">
               {activeTab === "instances" && (
                 <>
+                  {/* Shown before any start is attempted — leftovers from a host
+                      crash are what make `colima start` hang, and the instance
+                      looks plainly "Stopped" until you try. */}
+                  <StaleProcessBanner
+                    profile={instances[0]?.profile ?? "default"}
+                    onViewLogs={() => setShowLogs(true)}
+                  />
                   {isLoading && instances.length === 0 ? (
                     <p className="text-center text-sm text-fg-faint pt-8">Loading...</p>
                   ) : instances.length === 0 ? (
