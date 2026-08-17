@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Cpu, MemoryStick, HardDrive } from "lucide-react";
+import { useAdaptivePoll } from "../lib/usePolling";
 import type { VmStats } from "../types";
 
 interface VmStatsBarProps {
@@ -10,34 +11,16 @@ interface VmStatsBarProps {
 export function VmStatsBar({ profile }: VmStatsBarProps) {
   const [stats, setStats] = useState<VmStats | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    // Self-rescheduling loop instead of setInterval: the next poll is only
-    // scheduled once the previous invoke has settled, so a hung `colima ssh`
-    // call (can take minutes on a wedged VM) never stacks up pending
-    // invokes. Also skips polling while the window is hidden to the tray.
-    const poll = async () => {
-      if (document.visibilityState !== "hidden") {
-        try {
-          const s = await invoke<VmStats>("get_vm_stats", { profile });
-          if (!cancelled) setStats(s);
-        } catch {
-          if (!cancelled) setStats(null);
-        }
-      }
-      if (!cancelled) {
-        timeoutId = setTimeout(poll, 5000);
-      }
-    };
-
-    poll();
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-    };
+  // Each call is a `colima status` plus two `colima ssh` sessions into the guest.
+  const poll = useCallback(async () => {
+    try {
+      setStats(await invoke<VmStats>("get_vm_stats", { profile }));
+    } catch {
+      setStats(null);
+    }
   }, [profile]);
+
+  useAdaptivePoll(poll);
 
   if (!stats) return null;
 

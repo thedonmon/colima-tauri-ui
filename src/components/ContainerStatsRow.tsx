@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useAdaptivePoll } from "../lib/usePolling";
 import type { ContainerStats } from "../types";
 
 interface ContainerStatsRowProps {
@@ -10,36 +11,19 @@ export function ContainerStatsPanel({ profile }: ContainerStatsRowProps) {
   const [stats, setStats] = useState<ContainerStats[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    // Self-rescheduling loop instead of setInterval: the next poll is only
-    // scheduled once the previous invoke has settled, so a hung docker/colima
-    // call never stacks up pending invokes. Also skips polling while the
-    // window is hidden to the tray.
-    const poll = async () => {
-      if (document.visibilityState !== "hidden") {
-        try {
-          const s = await invoke<ContainerStats[]>("get_container_stats", { profile });
-          if (!cancelled) setStats(s);
-        } catch {
-          if (!cancelled) setStats([]);
-        } finally {
-          if (!cancelled) setLoading(false);
-        }
-      }
-      if (!cancelled) {
-        timeoutId = setTimeout(poll, 5000);
-      }
-    };
-
-    poll();
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-    };
+  // `docker stats` is by far the most expensive thing this app asks of the VM —
+  // about a second of guest CPU per call — so it backs right off when unfocused.
+  const poll = useCallback(async () => {
+    try {
+      setStats(await invoke<ContainerStats[]>("get_container_stats", { profile }));
+    } catch {
+      setStats([]);
+    } finally {
+      setLoading(false);
+    }
   }, [profile]);
+
+  useAdaptivePoll(poll);
 
   if (loading && stats.length === 0) return null;
   if (stats.length === 0) return null;
