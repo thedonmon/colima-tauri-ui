@@ -11,8 +11,8 @@ export function ContainerStatsPanel({ profile }: ContainerStatsRowProps) {
   const [stats, setStats] = useState<ContainerStats[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // `docker stats` is by far the most expensive thing this app asks of the VM —
-  // about a second of guest CPU per call — so it backs right off when unfocused.
+  // `docker stats` is by far the most expensive thing this app asks of the VM:
+  // about a second of guest CPU per call, hence the unhurried default interval.
   const poll = useCallback(async () => {
     try {
       setStats(await invoke<ContainerStats[]>("get_container_stats", { profile }));
