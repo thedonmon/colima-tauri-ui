@@ -4,11 +4,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Plus } from "lucide-react";
 
+import { useShallow } from "zustand/react/shallow";
+
 import { useColimaStore } from "./store";
 import { useSettingsStore } from "./store/settings";
 import { Header } from "./components/Header";
-import { Sidebar } from "./components/Sidebar";
-import type { AppTab } from "./components/Sidebar";
+import { TabBar } from "./components/TabBar";
+import type { AppTab } from "./components/TabBar";
 import { InstanceCard } from "./components/InstanceCard";
 import { StartModal } from "./components/StartModal";
 import { LogDrawer } from "./components/LogDrawer";
@@ -25,6 +27,11 @@ import type { ColimaInstance, DockerEvent, LogLine, ContainerLogsTarget } from "
 import "./index.css";
 
 export default function App() {
+  // Selected field-by-field rather than taking the whole store. Subscribing to
+  // everything meant any `set()` re-rendered this component and the entire tree
+  // beneath it — including `bumpDockerTick`, which fires on every Docker event
+  // (health-check exec events alone are ~1/s). Nothing here reads
+  // `dockerRefreshTick`, so App no longer re-renders on a tick at all.
   const {
     instances,
     isLoading,
@@ -37,7 +44,21 @@ export default function App() {
     addLog,
     bumpDockerTick,
     dockerContexts,
-  } = useColimaStore();
+  } = useColimaStore(
+    useShallow((s) => ({
+      instances: s.instances,
+      isLoading: s.isLoading,
+      isRunningCommand: s.isRunningCommand,
+      colimaInstalled: s.colimaInstalled,
+      fetchInstances: s.fetchInstances,
+      setInstances: s.setInstances,
+      fetchVersion: s.fetchVersion,
+      fetchDockerContexts: s.fetchDockerContexts,
+      addLog: s.addLog,
+      bumpDockerTick: s.bumpDockerTick,
+      dockerContexts: s.dockerContexts,
+    }))
+  );
 
   const { hideOnFocusLoss, load: loadSettings } = useSettingsStore();
 
@@ -47,6 +68,8 @@ export default function App() {
   const [configProfile, setConfigProfile] = useState<string | null>(null);
   const [containerLogsTarget, setContainerLogsTarget] = useState<ContainerLogsTarget | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>("instances");
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [inspectTarget, setInspectTarget] = useState<{
     profile: string;
     containerId: string;
@@ -110,6 +133,22 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Global ⌘K toggles the toolbar search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!searchOpen) setSearch("");
+  }, [searchOpen]);
+
   // Auto-hide on focus loss (when setting is enabled)
   useEffect(() => {
     if (!hideOnFocusLoss) return;
@@ -144,6 +183,7 @@ export default function App() {
   };
 
   const showSetupGuide = colimaInstalled === false;
+  const searchTerm = searchOpen ? search : "";
 
   return (
     <div className="relative flex flex-col h-screen bg-app-bg/90 text-fg overflow-hidden">
@@ -167,21 +207,15 @@ export default function App() {
         />
       )}
 
-      {/* Header */}
-      <Header onRefresh={fetchInstances} onNewInstance={openNewInstance} />
-
-      {/* Body */}
-      <div className="flex flex-row flex-1 min-h-0">
-        {!showSetupGuide && (
-          <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-        )}
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+      {/* Content zone: scrolling content under the floating toolbar bands */}
+      <div className="relative flex-1 min-h-0">
+        <div className="absolute inset-0 overflow-y-auto">
           {showSetupGuide ? (
-            <SetupGuide />
+            <div className="pt-[52px]">
+              <SetupGuide />
+            </div>
           ) : (
-            <div className="px-3 py-3 space-y-3">
+            <div className="px-3 pt-[58px] pb-[70px] space-y-2">
               {activeTab === "instances" && (
                 <>
                   {/* Shown before any start is attempted — leftovers from a host
@@ -196,25 +230,30 @@ export default function App() {
                   ) : instances.length === 0 ? (
                     <EmptyState onNewInstance={openNewInstance} />
                   ) : (
-                    instances.map((instance) => (
-                      <InstanceCard
-                        key={instance.profile}
-                        instance={instance}
-                        onStart={(p) => {
-                          setStartProfile(p);
-                          setShowStartModal(true);
-                        }}
-                        onViewConfig={(p) => setConfigProfile(p)}
-                        onViewLogs={() => setShowLogs(true)}
-                        onContainerLogsOpen={(target) => {
-                          setShowLogs(false);
-                          setContainerLogsTarget(target);
-                        }}
-                        onInspectContainer={(profile, containerId, containerName) => {
-                          setInspectTarget({ profile, containerId, containerName });
-                        }}
-                      />
-                    ))
+                    /* Adaptive grid: one column at popover width, more as the
+                       window is resized wider. */
+                    <div className="grid gap-2 items-start [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
+                      {instances.map((instance) => (
+                        <InstanceCard
+                          key={instance.profile}
+                          instance={instance}
+                          onStart={(p) => {
+                            setStartProfile(p);
+                            setShowStartModal(true);
+                          }}
+                          onViewConfig={(p) => setConfigProfile(p)}
+                          onViewLogs={() => setShowLogs(true)}
+                          onContainerLogsOpen={(target) => {
+                            setShowLogs(false);
+                            setContainerLogsTarget(target);
+                          }}
+                          onInspectContainer={(profile, containerId, containerName) => {
+                            setInspectTarget({ profile, containerId, containerName });
+                          }}
+                          filter={searchTerm}
+                        />
+                      ))}
+                    </div>
                   )}
                 </>
               )}
@@ -224,6 +263,7 @@ export default function App() {
                   {hasDesktopContext ? (
                     <DockerDesktopSection
                       defaultOpen
+                      filter={searchTerm}
                       onContainerLogsOpen={(target) => {
                         setShowLogs(false);
                         setContainerLogsTarget(target);
@@ -243,6 +283,19 @@ export default function App() {
             </div>
           )}
         </div>
+
+        {/* Floating toolbar bands */}
+        <Header
+          onRefresh={fetchInstances}
+          onNewInstance={openNewInstance}
+          searchOpen={searchOpen}
+          onSearchOpenChange={setSearchOpen}
+          search={search}
+          onSearchChange={setSearch}
+        />
+        {!showSetupGuide && (
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        )}
       </div>
 
       {/* Bottom drawers */}
@@ -264,7 +317,7 @@ function EmptyState({ onNewInstance }: { onNewInstance: () => void }) {
       <p className="text-sm text-fg-faint">No Colima instances found</p>
       <button
         onClick={onNewInstance}
-        className="flex items-center gap-2 rounded-xl bg-blue-500/15 px-4 py-2.5 text-sm font-medium text-blue-400 hover:bg-blue-500/25 transition-all"
+        className="flex items-center gap-2 rounded-full bg-blue-500/15 px-4 py-2.5 text-sm font-medium text-blue-400 hover:bg-blue-500/25 transition-all"
       >
         <Plus size={14} />
         Create your first instance

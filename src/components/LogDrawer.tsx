@@ -1,6 +1,9 @@
 import { useEffect, useRef, useMemo, useState } from "react";
 import { ChevronDown, AlertTriangle } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { useColimaStore } from "../store";
+import { DrawerShell } from "./ui/DrawerShell";
+import { Button, IconButton } from "./ui/Button";
 import { cn } from "../lib/utils";
 
 interface LogDrawerProps {
@@ -34,7 +37,17 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
     forceStopInstance,
     killStaleProcesses,
     fetchInstances,
-  } = useColimaStore();
+  } = useColimaStore(
+    useShallow((s) => ({
+      logs: s.logs,
+      isRunningCommand: s.isRunningCommand,
+      lastCommandFailed: s.lastCommandFailed,
+      activeProfile: s.activeProfile,
+      forceStopInstance: s.forceStopInstance,
+      killStaleProcesses: s.killStaleProcesses,
+      fetchInstances: s.fetchInstances,
+    }))
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const [recovering, setRecovering] = useState(false);
   // Remember the profile that failed so we can offer recovery even after activeProfile clears
@@ -85,9 +98,9 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
   };
 
   return (
-    <div className="border-t border-border bg-panel flex flex-col" style={{ height: 200 }}>
+    <DrawerShell initialHeight={220}>
       {/* Drawer header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-subtle">
+      <div className="flex items-center justify-between px-4 pb-2 border-b border-border-subtle flex-shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">
             Output
@@ -96,47 +109,36 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
             <span className="inline-flex h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
           )}
         </div>
-        <button
-          onClick={onClose}
-          className="text-fg-faint hover:text-fg-muted transition-colors"
-        >
-          <ChevronDown size={16} />
-        </button>
+        <IconButton icon={<ChevronDown size={16} />} onClick={onClose} title="Close" />
       </div>
 
       {/* Recovery banner */}
       {failed && profile && !recovering && (
-        <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-500/[0.08] border-b border-amber-500/20">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-500/[0.08] border-b border-amber-500/20 flex-shrink-0">
           <AlertTriangle size={14} className="text-amber-400 shrink-0" />
           <span className="text-xs text-amber-300/90 flex-1">
             {looksStuck
               ? "VM appears stuck from a previous crash."
               : "That command failed. If the VM is wedged, these can recover it."}
           </span>
-          <button
-            onClick={handleForceStop}
-            className="text-xs px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-all font-medium"
-          >
+          <Button size="sm" tone="warn" onClick={handleForceStop}>
             Force Stop
-          </button>
-          <button
-            onClick={handleKillAndRecover}
-            className="text-xs px-2.5 py-1 rounded-md bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-all font-medium"
-          >
+          </Button>
+          <Button size="sm" tone="stop" onClick={handleKillAndRecover}>
             Kill Processes
-          </button>
+          </Button>
         </div>
       )}
 
       {recovering && (
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-500/[0.06] border-b border-blue-500/20">
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-500/[0.06] border-b border-blue-500/20 flex-shrink-0">
           <span className="inline-block h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
           <span className="text-xs text-blue-400/80">Recovering...</span>
         </div>
       )}
 
       {/* Log lines */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-0.5 font-mono text-xs">
+      <div className="flex-1 overflow-y-auto p-3 space-y-0.5 font-mono text-xs min-h-0">
         {logs.length === 0 ? (
           <span className="text-fg-muted">Waiting for output...</span>
         ) : (
@@ -157,6 +159,6 @@ export function LogDrawer({ onClose }: LogDrawerProps) {
         )}
         <div ref={bottomRef} />
       </div>
-    </div>
+    </DrawerShell>
   );
 }

@@ -42,7 +42,7 @@ export function ConfigViewer({ profile, onClose }: ConfigViewerProps) {
               className="text-fg-faint hover:text-fg-secondary transition-colors"
               title="Copy to clipboard"
             >
-              {copied ? <Check size={15} className="text-green-400" /> : <Copy size={15} />}
+              {copied ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
             </button>
           )}
           <button

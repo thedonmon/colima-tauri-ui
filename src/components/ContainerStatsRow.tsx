@@ -40,7 +40,7 @@ export function ContainerStatsPanel({ profile }: ContainerStatsRowProps) {
       {stats.map((s) => (
         <div
           key={s.id}
-          className="grid grid-cols-[1fr_60px_90px_80px] gap-2 px-1 py-1 text-xs text-fg-muted font-mono rounded hover:bg-white/[0.03]"
+          className="grid grid-cols-[1fr_60px_90px_80px] gap-2 px-1 py-1 text-xs text-fg-muted font-mono rounded hover:bg-surface"
         >
           <span className="truncate text-fg-secondary">{s.name}</span>
           <span className="text-right">{s.cpuPercent}</span>

@@ -1,4 +1,4 @@
-import { cn } from "../lib/utils";
+import { Pill } from "./ui/Badge";
 
 interface StatusBadgeProps {
   status: string;
@@ -10,24 +10,13 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   const isStopped = status.toLowerCase() === "stopped";
 
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-        isRunning && "bg-green-500/15 text-green-400",
-        isStopped && "bg-red-500/15 text-red-400",
-        !isRunning && !isStopped && "bg-yellow-500/15 text-yellow-400",
-        className
-      )}
+    <Pill
+      tone={isRunning ? "emerald" : isStopped ? "neutral" : "amber"}
+      dot
+      pulse={!isRunning && !isStopped}
+      className={className}
     >
-      <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          isRunning && "bg-green-400",
-          isStopped && "bg-red-400",
-          !isRunning && !isStopped && "bg-yellow-400 animate-pulse"
-        )}
-      />
       {status}
-    </span>
+    </Pill>
   );
 }

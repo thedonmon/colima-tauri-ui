@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ChevronDown, Search, X } from "lucide-react";
 import AnsiToHtml from "ansi-to-html";
+import { DrawerShell } from "./ui/DrawerShell";
 import { cn } from "../lib/utils";
 import type { ContainerLogsTarget, ContainerLogLineEvent } from "../types";
 
@@ -107,25 +108,25 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
   const isUp = status.toLowerCase().startsWith("up");
 
   return (
-    <div className="border-t border-border bg-panel flex flex-col" style={{ height: 280 }}>
+    <DrawerShell initialHeight={300}>
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border-subtle flex-shrink-0">
+      <div className="flex items-center gap-3 px-4 pb-2 border-b border-border-subtle flex-shrink-0">
         <span
           className={cn(
             "h-2 w-2 rounded-full flex-shrink-0",
-            isUp ? "bg-green-500" : "bg-fg-faint"
+            isUp ? "bg-emerald-400" : "bg-fg-faint"
           )}
         />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-fg truncate">
             {target.container.names || target.container.id}
           </p>
-          <p className="text-xs text-fg-muted truncate">{target.container.image}</p>
+          <p className="text-xs text-fg-muted font-mono truncate">{target.container.image}</p>
         </div>
 
         {/* Search bar */}
         {showSearch && (
-          <div className="flex items-center gap-2 bg-white/[0.05] border border-white/10 rounded-lg px-2.5 py-1.5">
+          <div className="flex items-center gap-2 bg-surface border border-border rounded-ctl px-2.5 py-1.5">
             <Search size={12} className="text-fg-faint flex-shrink-0" />
             <input
               ref={searchRef}
@@ -145,8 +146,8 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
               className={cn(
                 "text-[10px] font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 transition-colors",
                 fuzzy
-                  ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-400"
-                  : "bg-white/[0.03] border-white/10 text-fg-faint hover:text-fg-muted"
+                  ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
+                  : "bg-surface border-white/10 text-fg-faint hover:text-fg-muted"
               )}
             >
               F
@@ -155,8 +156,8 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
         )}
 
         {isUp && !showSearch && (
-          <span className="flex items-center gap-1.5 text-xs text-green-500/60">
-            <span className="inline-block h-2 w-2 rounded-full bg-green-500/60 animate-pulse" />
+          <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/[0.14] px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
             live
           </span>
         )}
@@ -198,7 +199,7 @@ export function ContainerLogsDrawer({ target, onClose }: ContainerLogsDrawerProp
         )}
         <div ref={bottomRef} />
       </div>
-    </div>
+    </DrawerShell>
   );
 }
 
@@ -235,7 +236,7 @@ function LogLineRow({ line, isMatch, search, fuzzy }: { line: LogLine; isMatch: 
       className={cn(
         "leading-relaxed whitespace-pre-wrap break-all px-1.5 rounded",
         line.isErr ? "text-red-400/80" : "",
-        isMatch && "bg-yellow-500/[0.07] border-l-2 border-yellow-500/30 pl-2.5"
+        isMatch && "bg-amber-500/[0.07] border-l-2 border-amber-500/30 pl-2.5"
       )}
       dangerouslySetInnerHTML={{ __html: html }}
     />

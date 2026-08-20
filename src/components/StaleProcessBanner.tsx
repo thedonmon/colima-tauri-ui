@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { useColimaStore } from "../store";
 import type { StaleProcess } from "../types";
 
@@ -22,7 +23,9 @@ interface StaleProcessBannerProps {
  * only ever visible when everything is stopped and cleanup is safe.
  */
 export function StaleProcessBanner({ profile, onViewLogs }: StaleProcessBannerProps) {
-  const { killStaleProcesses, isRunningCommand } = useColimaStore();
+  const { killStaleProcesses, isRunningCommand } = useColimaStore(
+    useShallow((s) => ({ killStaleProcesses: s.killStaleProcesses, isRunningCommand: s.isRunningCommand }))
+  );
   const [stale, setStale] = useState<StaleProcess[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [cleaning, setCleaning] = useState(false);
@@ -55,7 +58,7 @@ export function StaleProcessBanner({ profile, onViewLogs }: StaleProcessBannerPr
   };
 
   return (
-    <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.07] overflow-hidden">
+    <div className="rounded-card border border-amber-500/25 bg-amber-500/[0.07] overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3">
         <AlertTriangle size={15} className="text-amber-400 shrink-0" />
         <div className="flex-1 min-w-0">
@@ -77,7 +80,7 @@ export function StaleProcessBanner({ profile, onViewLogs }: StaleProcessBannerPr
         <button
           onClick={handleCleanup}
           disabled={cleaning || isRunningCommand}
-          className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all font-medium disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          className="text-xs px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all font-medium disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
         >
           {cleaning ? "Cleaning..." : "Clean up"}
         </button>

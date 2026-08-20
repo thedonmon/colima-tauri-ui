@@ -11,10 +11,10 @@ export function PruneConfirmModal({ profile, onConfirm, onCancel }: PruneConfirm
   const [dontAsk, setDontAsk] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-80 bg-panel-alt border border-white/10 rounded-2xl p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-overlay">
+      <div className="w-80 bg-panel-alt/95 backdrop-blur-xl border border-stroke rounded-panel p-5 shadow-2xl animate-sheet">
         <div className="flex items-center gap-2.5 mb-3">
-          <div className="p-2 rounded-lg bg-amber-500/15">
+          <div className="p-2 rounded-ctl bg-amber-500/15">
             <AlertTriangle size={16} className="text-amber-400" />
           </div>
           <h3 className="text-sm font-semibold text-fg">Prune "{profile}"</h3>
@@ -44,13 +44,13 @@ export function PruneConfirmModal({ profile, onConfirm, onCancel }: PruneConfirm
         <div className="flex items-center gap-2 justify-end">
           <button
             onClick={onCancel}
-            className="text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] text-fg-muted hover:text-fg-secondary transition-all"
+            className="text-xs px-3 py-1.5 rounded-full bg-surface-raised text-fg-muted hover:text-fg-secondary transition-all"
           >
             Cancel
           </button>
           <button
             onClick={() => onConfirm(dontAsk)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-all font-medium"
+            className="text-xs px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all font-medium"
           >
             Prune
           </button>

@@ -3,6 +3,10 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useSettingsStore } from "../store/settings";
 import type { DefaultVmPreset } from "../store/settings";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { Toggle } from "./ui/Toggle";
+import { Segmented } from "./ui/Segmented";
+import { Button } from "./ui/Button";
+import { Slider } from "./ui/Slider";
 import { relaunch } from "@tauri-apps/plugin-process";
 
 export function Settings() {
@@ -113,13 +117,9 @@ export function Settings() {
               </p>
             </div>
             {!updateAvailable && (
-              <button
-                onClick={handleCheckUpdate}
-                disabled={checking}
-                className="text-xs px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition-all disabled:opacity-40"
-              >
+              <Button tone="primary" onClick={handleCheckUpdate} disabled={checking}>
                 {checking ? "Checking..." : "Check now"}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -132,7 +132,7 @@ export function Settings() {
           )}
 
           {updateAvailable && (
-            <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-3 space-y-2">
+            <div className="rounded-ctl bg-blue-500/10 border border-blue-500/20 p-3 space-y-2">
               <p className="text-sm text-blue-400 font-medium">
                 v{updateAvailable.version} is available!
               </p>
@@ -144,13 +144,9 @@ export function Settings() {
               {downloadProgress && (
                 <p className="text-xs text-fg-muted">{downloadProgress}</p>
               )}
-              <button
-                onClick={handleInstallUpdate}
-                disabled={installing}
-                className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-all disabled:opacity-40"
-              >
+              <Button tone="start" onClick={handleInstallUpdate} disabled={installing}>
                 {installing ? (downloadProgress ?? "Installing...") : "Download & Install"}
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -163,7 +159,7 @@ export function Settings() {
         </p>
 
         <div className="space-y-3">
-          <SliderRow
+          <Slider
             label="CPU"
             value={defaultVmPreset.cpu}
             min={1}
@@ -171,7 +167,7 @@ export function Settings() {
             unit="cores"
             onChange={(v) => updatePreset({ cpu: v })}
           />
-          <SliderRow
+          <Slider
             label="Memory"
             value={defaultVmPreset.memory}
             min={2}
@@ -179,7 +175,7 @@ export function Settings() {
             unit="GiB"
             onChange={(v) => updatePreset({ memory: v })}
           />
-          <SliderRow
+          <Slider
             label="Disk"
             value={defaultVmPreset.disk}
             min={20}
@@ -191,7 +187,8 @@ export function Settings() {
 
           <div className="flex items-center justify-between pt-1">
             <span className="text-sm text-fg-muted">VM Type</span>
-            <SegmentedMini
+            <Segmented
+              size="sm"
               options={[
                 { label: "VZ", value: "vz" },
                 { label: "QEMU", value: "qemu" },
@@ -203,7 +200,8 @@ export function Settings() {
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-fg-muted">Runtime</span>
-            <SegmentedMini
+            <Segmented
+              size="sm"
               options={[
                 { label: "Docker", value: "docker" },
                 { label: "containerd", value: "containerd" },
@@ -235,7 +233,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-white/[0.03] overflow-hidden">
+    <div className="rounded-card border border-border bg-surface overflow-hidden">
       <div className="px-4 py-3">
         <p className="text-sm font-medium text-fg-secondary mb-3">{title}</p>
         <div className="space-y-1">{children}</div>
@@ -261,84 +259,7 @@ function ToggleRow({
         <p className="text-sm text-fg">{label}</p>
         <p className="text-xs text-fg-muted leading-relaxed">{description}</p>
       </div>
-      <button
-        onClick={() => onChange(!value)}
-        className={`relative inline-flex h-6 w-10 flex-shrink-0 items-center rounded-full transition-colors ${
-          value ? "bg-blue-500" : "bg-white/15"
-        }`}
-      >
-        <span
-          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-            value ? "translate-x-5" : "translate-x-0.5"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
-
-function SliderRow({
-  label,
-  value,
-  min,
-  max,
-  step = 1,
-  unit,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  unit: string;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-sm text-fg-muted">{label}</span>
-        <span className="text-sm text-fg font-mono">
-          {value} {unit}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full cursor-pointer"
-      />
-    </div>
-  );
-}
-
-function SegmentedMini({
-  options,
-  value,
-  onChange,
-}: {
-  options: { label: string; value: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex rounded-lg bg-white/[0.04] border border-border p-0.5">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-            value === opt.value
-              ? "bg-white/15 text-fg shadow-sm"
-              : "text-fg-muted hover:text-fg-secondary"
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
+      <Toggle value={value} onChange={onChange} />
     </div>
   );
 }

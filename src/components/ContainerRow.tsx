@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Play, Square, RotateCcw, Pause, Play as Resume, ScrollText, Trash2, Terminal, Search } from "lucide-react";
+import { Button } from "./ui/Button";
 import { cn } from "../lib/utils";
 import type { DockerContainer, ContainerLogsTarget } from "../types";
 
@@ -55,123 +56,129 @@ export function ContainerRow({ container, context, profile, onLogsOpen, onRefres
               : paused
               ? "bg-amber-400/70"
               : up
-              ? "bg-emerald-500/80"
-              : "bg-border"
+              ? "bg-emerald-400"
+              : "bg-white/[0.25]"
           )}
         />
 
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-fg truncate leading-snug">
+          <p className="text-[13px] font-medium text-fg truncate leading-snug">
             {container.names || "—"}
           </p>
-          <p className="text-xs text-fg-muted truncate mb-2">{container.image || "—"}</p>
+          <p className="text-xs text-fg-muted font-mono truncate mb-2">
+            {container.image || "—"}
+          </p>
 
           {/* Action buttons */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {paused ? (
-              <ContainerBtn
+              <Button
+                size="sm"
                 icon={<Resume size={11} />}
-                label="Resume"
+                tone="start"
                 onClick={() => handleAction("unpause")}
-                active={busyAction === "unpause"}
+                busy={busyAction === "unpause"}
                 disabled={isBusy}
-                variant="start"
-              />
+              >
+                Resume
+              </Button>
             ) : up ? (
               <>
-                <ContainerBtn
+                <Button
+                  size="sm"
                   icon={<Square size={11} />}
-                  label="Stop"
+                  tone="stop"
                   onClick={() => handleAction("stop")}
-                  active={busyAction === "stop"}
+                  busy={busyAction === "stop"}
                   disabled={isBusy}
-                  variant="stop"
-                />
-                <ContainerBtn
+                >
+                  Stop
+                </Button>
+                <Button
+                  size="sm"
                   icon={<Pause size={11} />}
-                  label="Pause"
+                  tone="warn"
                   onClick={() => handleAction("pause")}
-                  active={busyAction === "pause"}
+                  busy={busyAction === "pause"}
                   disabled={isBusy}
-                  variant="pause"
-                />
-                <ContainerBtn
+                >
+                  Pause
+                </Button>
+                <Button
+                  size="sm"
                   icon={<RotateCcw size={11} />}
-                  label="Restart"
+                  tone="primary"
                   onClick={() => handleAction("restart")}
-                  active={busyAction === "restart"}
+                  busy={busyAction === "restart"}
                   disabled={isBusy}
-                  variant="restart"
-                />
+                >
+                  Restart
+                </Button>
               </>
             ) : (
               <>
-                <ContainerBtn
+                <Button
+                  size="sm"
                   icon={<Play size={11} />}
-                  label="Start"
+                  tone="start"
                   onClick={() => handleAction("start")}
-                  active={busyAction === "start"}
+                  busy={busyAction === "start"}
                   disabled={isBusy}
-                  variant="start"
-                />
+                >
+                  Start
+                </Button>
                 {confirmRemove ? (
                   <>
-                    <ContainerBtn
-                      icon={null}
-                      label="Cancel"
-                      onClick={() => setConfirmRemove(false)}
-                      active={false}
-                      disabled={isBusy}
-                      variant="default"
-                    />
-                    <ContainerBtn
-                      icon={null}
-                      label="Confirm"
+                    <Button size="sm" onClick={() => setConfirmRemove(false)} disabled={isBusy}>
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      tone="stop"
                       onClick={() => handleAction("rm")}
-                      active={busyAction === "rm"}
+                      busy={busyAction === "rm"}
                       disabled={isBusy}
-                      variant="danger"
-                    />
+                    >
+                      Confirm
+                    </Button>
                   </>
                 ) : (
-                  <ContainerBtn
+                  <Button
+                    size="sm"
                     icon={<Trash2 size={11} />}
-                    label="Remove"
+                    tone="stop"
                     onClick={() => setConfirmRemove(true)}
-                    active={false}
                     disabled={isBusy}
-                    variant="danger"
-                  />
+                  >
+                    Remove
+                  </Button>
                 )}
               </>
             )}
-            <ContainerBtn
+            <Button
+              size="sm"
               icon={<ScrollText size={11} />}
-              label="Logs"
               onClick={() => onLogsOpen({ container, context })}
-              active={false}
-              disabled={false}
-              variant="default"
-            />
+            >
+              Logs
+            </Button>
             {up && profile && (
-              <ContainerBtn
+              <Button
+                size="sm"
                 icon={<Terminal size={11} />}
-                label="Exec"
                 onClick={() => invoke("container_exec", { profile, containerId: container.id })}
-                active={false}
-                disabled={false}
-                variant="default"
-              />
+              >
+                Exec
+              </Button>
             )}
             {profile && onInspect && (
-              <ContainerBtn
+              <Button
+                size="sm"
                 icon={<Search size={11} />}
-                label="Inspect"
                 onClick={() => onInspect(profile, container.id, container.names || container.id)}
-                active={false}
-                disabled={false}
-                variant="default"
-              />
+              >
+                Inspect
+              </Button>
             )}
           </div>
 
@@ -181,43 +188,5 @@ export function ContainerRow({ container, context, profile, onLogsOpen, onRefres
         </div>
       </div>
     </div>
-  );
-}
-
-type BtnVariant = "start" | "stop" | "pause" | "restart" | "default" | "danger";
-
-interface BtnProps {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-  active: boolean;
-  disabled: boolean;
-  variant: BtnVariant;
-}
-
-function ContainerBtn({ icon, label, onClick, active, disabled, variant }: BtnProps) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-all",
-        "disabled:opacity-35 disabled:cursor-not-allowed",
-        active && "opacity-70",
-        variant === "start" && "bg-emerald-500/12 text-emerald-400 hover:bg-emerald-500/20",
-        variant === "stop" && "bg-red-500/12 text-red-400 hover:bg-red-500/20",
-        variant === "pause" && "bg-amber-500/12 text-amber-400 hover:bg-amber-500/20",
-        variant === "restart" && "bg-blue-500/12 text-blue-400 hover:bg-blue-500/20",
-        variant === "default" && "bg-white/[0.05] text-fg-muted hover:bg-white/[0.09] hover:text-fg-secondary",
-        variant === "danger" && "bg-red-500/12 text-red-400 hover:bg-red-500/20"
-      )}
-    >
-      {active ? (
-        <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
-      ) : (
-        icon
-      )}
-      {label}
-    </button>
   );
 }

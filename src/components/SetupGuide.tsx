@@ -2,7 +2,7 @@ import { Terminal, Package, Cpu } from "lucide-react";
 
 function CodeLine({ children }: { children: string }) {
   return (
-    <div className="flex items-center gap-2.5 bg-black/30 rounded-lg px-3.5 py-2.5 font-mono text-xs text-[#a0c4ff] border border-border-subtle">
+    <div className="flex items-center gap-2.5 bg-black/30 rounded-ctl px-3.5 py-2.5 font-mono text-xs text-blue-300 border border-border-subtle">
       <span className="text-fg-faint select-none">$</span>
       <span>{children}</span>
     </div>

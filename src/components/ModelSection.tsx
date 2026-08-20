@@ -3,8 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronDown,
   ChevronRight,
-  Cpu,
   Download,
+  Sparkles,
   List,
   Play,
   Settings,
@@ -13,6 +13,7 @@ import {
   Radio,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useShallow } from "zustand/react/shallow";
 import { useColimaStore } from "../store";
 
 const CHAT_MODELS = [
@@ -45,7 +46,9 @@ function hasDockerRunner(versionStr: string): boolean {
 }
 
 export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}) {
-  const { instances, version, fetchInstances } = useColimaStore();
+  const { instances, version, fetchInstances } = useColimaStore(
+    useShallow((s) => ({ instances: s.instances, version: s.version, fetchInstances: s.fetchInstances }))
+  );
   const runningInstances = instances.filter((i) => i.status.toLowerCase() === "running");
   const supportsDockerRunner = hasDockerRunner(version);
 
@@ -212,28 +215,34 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
   const examples = tab === "serve" ? EMBEDDING_MODELS : CHAT_MODELS;
 
   return (
-    <div className="rounded-xl border border-border bg-white/[0.03] overflow-hidden">
+    <div className="rounded-card border border-border bg-surface overflow-hidden">
       <button
         onClick={handleOpen}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-white/[0.03] transition-all"
+        className="w-full flex items-center gap-2.5 px-3 py-3 text-sm text-left"
       >
-        <div className="flex items-center gap-2.5">
-          <span className="text-fg-muted">
-            {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          </span>
-          <Cpu size={13} className="text-fg-muted" />
-          <span className="text-fg-secondary font-medium">AI Models</span>
-          <span className="text-xs text-fg-muted font-mono">colima model</span>
+        <div className="w-[34px] h-[34px] rounded-ctl bg-purple-500/[0.14] text-purple-300 flex items-center justify-center flex-shrink-0">
+          <Sparkles size={17} />
         </div>
-        <span className="text-xs text-purple-400/70 bg-purple-500/10 rounded-full px-2.5 py-1">
+        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+          <span className="text-[15px] font-semibold text-fg leading-tight truncate">
+            AI Models
+          </span>
+          <span className="text-[11px] text-fg-muted leading-tight truncate">
+            {supportsDockerRunner ? "Docker Model Runner" : "ramalama runner"}
+          </span>
+        </div>
+        <span className="text-xs font-medium text-purple-300 bg-purple-500/[0.14] rounded-full px-2.5 py-1 flex-shrink-0">
           krunkit
+        </span>
+        <span className="text-fg-faint">
+          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </span>
       </button>
 
       {open && (
         <div className="border-t border-border-subtle px-4 pb-4 pt-3 space-y-3">
           {/* Info banner */}
-          <div className="flex items-start gap-2.5 rounded-lg bg-purple-500/[0.06] border border-purple-500/15 px-3.5 py-3">
+          <div className="flex items-start gap-2.5 rounded-ctl bg-purple-500/[0.06] border border-purple-500/15 px-3.5 py-3">
             <AlertTriangle size={13} className="text-purple-400/80 mt-0.5 flex-shrink-0" />
             <p className="text-xs text-purple-300/70 leading-relaxed">
               Requires Apple Silicon + macOS 13+ with{" "}
@@ -256,13 +265,13 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
           {runningInstances.length > 1 && (
             <div className="flex items-center gap-2.5">
               <span className="text-xs text-fg-muted">Profile</span>
-              <div className="flex rounded-lg bg-white/[0.04] border border-border p-0.5">
+              <div className="flex rounded-ctl bg-surface border border-border p-0.5">
                 {runningInstances.map((i) => (
                   <button
                     key={i.profile}
                     onClick={() => setSelectedProfile(i.profile)}
                     className={cn(
-                      "px-3 py-1 text-xs font-medium rounded-md transition-all",
+                      "px-3 py-1 text-xs font-medium rounded-lg transition-all",
                       selectedProfile === i.profile
                         ? "bg-purple-500/20 text-purple-300 shadow-sm"
                         : "text-fg-muted hover:text-fg-secondary"
@@ -282,7 +291,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               <span
                 className={cn(
                   "h-2 w-2 rounded-full",
-                  isKrunkit ? "bg-green-500" : "bg-yellow-500/70"
+                  isKrunkit ? "bg-emerald-400" : "bg-amber-400/70"
                 )}
               />
               <span className="text-xs text-fg-muted">
@@ -299,7 +308,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               <button
                 onClick={handleSetup}
                 disabled={busy !== null || noInstances}
-                className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 flex items-center justify-center gap-2 rounded-ctl border border-border bg-surface py-2.5 text-sm text-fg-secondary hover:bg-surface-raised hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Settings size={13} className={cn(busy === "setup" && "animate-spin")} />
                 {busy === "setup" ? "Setting up..." : "Setup"}
@@ -309,7 +318,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               onClick={handleList}
               disabled={actionsDisabled}
               className={cn(
-                "flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] px-3.5 py-2.5 text-sm text-fg-secondary hover:bg-white/[0.06] hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed",
+                "flex items-center justify-center gap-2 rounded-ctl border border-border bg-surface px-3.5 py-2.5 text-sm text-fg-secondary hover:bg-surface-raised hover:text-fg transition-all disabled:opacity-40 disabled:cursor-not-allowed",
                 isKrunkit && "flex-1"
               )}
             >
@@ -320,7 +329,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
 
           {/* New krunkit profile form */}
           {showSetupForm && !isKrunkit && (
-            <div className="rounded-lg bg-purple-500/[0.04] border border-purple-500/15 p-3.5 space-y-3">
+            <div className="rounded-ctl bg-purple-500/[0.04] border border-purple-500/15 p-3.5 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-purple-300/70 font-medium">
                   Create a new krunkit profile for AI models
@@ -345,7 +354,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
                   value={setupProfile}
                   onChange={(e) => setSetupProfile(e.target.value.replace(/[^a-zA-Z0-9-_]/g, ""))}
                   placeholder="ai"
-                  className="flex-1 bg-white/[0.04] border border-border rounded-lg px-2.5 py-1.5 text-sm text-fg font-mono outline-none focus:border-purple-500/40 transition-colors"
+                  className="flex-1 bg-surface border border-border rounded-ctl px-2.5 py-1.5 text-sm text-fg font-mono outline-none focus:border-purple-500/40 transition-colors"
                 />
               </div>
               <div className="grid grid-cols-3 gap-2.5">
@@ -357,7 +366,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
                     onChange={(e) => setSetupCpu(Number(e.target.value))}
                     min={1}
                     max={16}
-                    className="w-full bg-white/[0.04] border border-border rounded-lg px-2.5 py-1.5 text-sm text-fg font-mono outline-none"
+                    className="w-full bg-surface border border-border rounded-ctl px-2.5 py-1.5 text-sm text-fg font-mono outline-none"
                   />
                 </div>
                 <div>
@@ -368,7 +377,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
                     onChange={(e) => setSetupMemory(Number(e.target.value))}
                     min={2}
                     max={64}
-                    className="w-full bg-white/[0.04] border border-border rounded-lg px-2.5 py-1.5 text-sm text-fg font-mono outline-none"
+                    className="w-full bg-surface border border-border rounded-ctl px-2.5 py-1.5 text-sm text-fg font-mono outline-none"
                   />
                 </div>
                 <div>
@@ -379,7 +388,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
                     onChange={(e) => setSetupDisk(Number(e.target.value))}
                     min={20}
                     max={200}
-                    className="w-full bg-white/[0.04] border border-border rounded-lg px-2.5 py-1.5 text-sm text-fg font-mono outline-none"
+                    className="w-full bg-surface border border-border rounded-ctl px-2.5 py-1.5 text-sm text-fg font-mono outline-none"
                   />
                 </div>
               </div>
@@ -387,14 +396,14 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
                 <button
                   onClick={handleSetup}
                   disabled={!setupProfile.trim() || busy !== null}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-purple-500/20 py-2 text-sm text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-ctl bg-purple-500/20 py-2 text-sm text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Settings size={13} />
                   Create & Setup
                 </button>
                 <button
                   onClick={() => setShowSetupForm(false)}
-                  className="px-3 py-2 rounded-lg border border-border text-sm text-fg-muted hover:bg-white/[0.04] transition-all"
+                  className="px-3 py-2 rounded-ctl border border-border text-sm text-fg-muted hover:bg-surface transition-all"
                 >
                   Cancel
                 </button>
@@ -404,7 +413,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
 
           {/* Serving indicator */}
           {isServing && (
-            <div className="flex items-center justify-between rounded-lg bg-emerald-500/[0.08] border border-emerald-500/20 px-3.5 py-2.5">
+            <div className="flex items-center justify-between rounded-ctl bg-emerald-500/[0.08] border border-emerald-500/20 px-3.5 py-2.5">
               <div className="flex items-center gap-2.5">
                 <Radio size={13} className="text-emerald-400 animate-pulse" />
                 <div>
@@ -418,7 +427,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               </div>
               <button
                 onClick={handleStopServe}
-                className="flex items-center gap-1.5 rounded-lg bg-red-500/15 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/25 transition-all"
+                className="flex items-center gap-1.5 rounded-ctl bg-red-500/15 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/25 transition-all"
               >
                 <Square size={10} />
                 Stop
@@ -427,11 +436,11 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
           )}
 
           {/* Run / Serve tab toggle */}
-          <div className="flex rounded-lg bg-white/[0.04] border border-border p-0.5">
+          <div className="flex rounded-ctl bg-surface border border-border p-0.5">
             <button
               onClick={() => setTab("run")}
               className={cn(
-                "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                "flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all",
                 tab === "run"
                   ? "bg-purple-500/20 text-purple-300 shadow-sm"
                   : "text-fg-muted hover:text-fg-secondary"
@@ -442,7 +451,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
             <button
               onClick={() => setTab("serve")}
               className={cn(
-                "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                "flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all",
                 tab === "serve"
                   ? "bg-emerald-500/20 text-emerald-300 shadow-sm"
                   : "text-fg-muted hover:text-fg-secondary"
@@ -469,13 +478,13 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
                     ? "ollama://nomic-embed-text  ·  gemma3"
                     : "gemma3  ·  hf://tinyllama  ·  ollama://mistral"
                 }
-                className="flex-1 bg-white/[0.04] border border-border rounded-lg px-3 py-2 text-sm text-fg placeholder:text-fg-faint outline-none focus:border-purple-500/40 transition-colors"
+                className="flex-1 bg-surface border border-border rounded-ctl px-3 py-2 text-sm text-fg placeholder:text-fg-faint outline-none focus:border-purple-500/40 transition-colors"
               />
               {tab === "run" ? (
                 <button
                   onClick={handleRun}
                   disabled={!modelInput.trim() || actionsDisabled}
-                  className="flex items-center gap-2 rounded-lg bg-purple-500/20 px-3.5 py-2 text-sm text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 rounded-ctl bg-purple-500/20 px-3.5 py-2 text-sm text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Play size={12} />
                   {busy === "run" ? "Running..." : "Run"}
@@ -484,7 +493,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
                 <button
                   onClick={handleServe}
                   disabled={!modelInput.trim() || actionsDisabled || isServing}
-                  className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-3.5 py-2 text-sm text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 rounded-ctl bg-emerald-500/20 px-3.5 py-2 text-sm text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Radio size={12} />
                   Serve
@@ -496,7 +505,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
             <button
               onClick={handlePull}
               disabled={!modelInput.trim() || actionsDisabled}
-              className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-white/[0.04] py-2 text-xs text-fg-muted hover:bg-white/[0.06] hover:text-fg-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 rounded-ctl border border-border bg-surface py-2 text-xs text-fg-muted hover:bg-surface-raised hover:text-fg-secondary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Download size={11} />
               {busy === "pull" ? "Pulling..." : "Pull model (download only)"}
@@ -512,7 +521,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
                   <button
                     key={m}
                     onClick={() => setModelInput(m)}
-                    className="text-xs font-mono rounded-md px-2 py-1 bg-white/[0.04] text-fg-muted hover:text-fg-secondary hover:bg-white/[0.07] transition-all"
+                    className="text-xs font-mono rounded-chip px-2 py-1 bg-surface border border-white/[0.08] text-fg-muted hover:text-fg-secondary hover:bg-surface-raised transition-all"
                   >
                     {m}
                   </button>
@@ -523,7 +532,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
 
           {/* Model list */}
           {showList && modelList !== null && (
-            <div className="rounded-lg bg-white/[0.02] border border-border-subtle overflow-hidden">
+            <div className="rounded-ctl bg-white/[0.02] border border-border-subtle overflow-hidden">
               <div className="flex items-center justify-between px-3.5 py-2 border-b border-border-subtle">
                 <p className="text-xs text-fg-muted font-medium">Downloaded Models</p>
                 <button
@@ -551,7 +560,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
               <ChevronRight size={11} className="group-open:rotate-90 transition-transform" />
               Supported registries
             </summary>
-            <div className="rounded-lg bg-white/[0.02] border border-border-subtle px-3.5 py-2.5 space-y-1.5 mt-2">
+            <div className="rounded-ctl bg-white/[0.02] border border-border-subtle px-3.5 py-2.5 space-y-1.5 mt-2">
               {[
                 { label: "HuggingFace (default)", value: "hf://", example: "hf://tinyllama" },
                 { label: "Ollama", value: "ollama://", example: "ollama://tinyllama" },
@@ -580,7 +589,7 @@ export function ModelSection({ defaultOpen, onViewLogs }: ModelSectionProps = {}
             </p>
           )}
           {runningInstances.length > 0 && !canRunModels && (
-            <p className="text-xs text-yellow-400/70 italic">
+            <p className="text-xs text-amber-400/70 italic">
               Restart with <span className="font-mono">--vm-type krunkit</span> to enable AI models, or click Setup above.
             </p>
           )}

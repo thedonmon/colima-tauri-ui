@@ -58,7 +58,7 @@ export function ContainerInspect({
               title="Copy raw JSON"
             >
               {copied ? (
-                <Check size={15} className="text-green-400" />
+                <Check size={15} className="text-emerald-400" />
               ) : (
                 <Copy size={15} />
               )}
@@ -79,7 +79,7 @@ export function ContainerInspect({
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${
               tab === t
                 ? "bg-white/[0.1] text-fg"
                 : "text-fg-muted hover:text-fg-secondary hover:bg-white/[0.04]"
@@ -112,7 +112,7 @@ export function ContainerInspect({
                 const key = eqIdx >= 0 ? env.slice(0, eqIdx) : env;
                 const val = eqIdx >= 0 ? env.slice(eqIdx + 1) : "";
                 return (
-                  <div key={i} className="flex gap-2 text-xs font-mono py-1 rounded hover:bg-white/[0.03]">
+                  <div key={i} className="flex gap-2 text-xs font-mono py-1 rounded hover:bg-surface">
                     <span className="text-blue-400 flex-shrink-0">{key}</span>
                     <span className="text-fg-faint">=</span>
                     <span className="text-fg-secondary break-all">{val}</span>
@@ -130,7 +130,7 @@ export function ContainerInspect({
                 <div key={containerPort} className="flex gap-3 text-xs font-mono py-1">
                   <span className="text-fg-secondary">{containerPort}</span>
                   <span className="text-fg-faint">→</span>
-                  <span className="text-green-400">
+                  <span className="text-emerald-400">
                     {Array.isArray(bindings) && bindings.length > 0
                       ? bindings
                           .map(

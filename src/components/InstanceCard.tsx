@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Cpu,
   HardDrive,
   MemoryStick,
   Play,
+  Server,
   Square,
   RotateCcw,
   Trash2,
@@ -13,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { useColimaStore } from "../store";
 import { useSettingsStore } from "../store/settings";
 import { StatusBadge } from "./StatusBadge";
@@ -23,6 +25,8 @@ import { VolumeRow } from "./VolumeRow";
 import { VmStatsBar } from "./VmStatsBar";
 import { ContainerStatsPanel } from "./ContainerStatsRow";
 import { ImagePull } from "./ImagePull";
+import { Button, IconButton } from "./ui/Button";
+import { CountPill } from "./ui/Badge";
 import { cn } from "../lib/utils";
 import type { ColimaInstance, DockerContainer, DockerImage, DockerVolume, ContainerLogsTarget } from "../types";
 
@@ -33,6 +37,8 @@ interface InstanceCardProps {
   onViewLogs: () => void;
   onContainerLogsOpen: (target: ContainerLogsTarget) => void;
   onInspectContainer: (profile: string, containerId: string, containerName: string) => void;
+  /** Global ⌘K search: filters containers, images, and volumes. */
+  filter?: string;
 }
 
 export function InstanceCard({
@@ -42,11 +48,23 @@ export function InstanceCard({
   onViewLogs,
   onContainerLogsOpen,
   onInspectContainer,
+  filter,
 }: InstanceCardProps) {
-  const { stopInstance, restartInstance, deleteInstance, pruneInstance, isRunningCommand, activeProfile, dockerRefreshTick } =
-    useColimaStore();
+  const { stopInstance, restartInstance, deleteInstance, pruneInstance, isRunningCommand, activeProfile } =
+    useColimaStore(
+      useShallow((s) => ({
+        stopInstance: s.stopInstance,
+        restartInstance: s.restartInstance,
+        deleteInstance: s.deleteInstance,
+        pruneInstance: s.pruneInstance,
+        isRunningCommand: s.isRunningCommand,
+        activeProfile: s.activeProfile,
+      }))
+    );
   const { skipPruneConfirm, update: updateSettings } = useSettingsStore();
-  const tick = dockerRefreshTick[instance.profile] ?? 0;
+  // Narrowed to this profile's counter, so a Docker event on one instance no
+  // longer re-renders every other instance's card.
+  const tick = useColimaStore((s) => s.dockerRefreshTick[instance.profile] ?? 0);
 
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [showPruneConfirm, setShowPruneConfirm] = useState(false);
@@ -67,6 +85,13 @@ export function InstanceCard({
   const isRunning = instance.status.toLowerCase() === "running";
   const isThisRunning = isRunningCommand && activeProfile === instance.profile;
   const isBusy = isRunningCommand;
+
+  const query = (filter ?? "").trim().toLowerCase();
+  const searching = query.length > 0;
+  // While searching, every section is treated as open so matches are visible.
+  const containersOpen = showContainers || searching;
+  const imagesOpen = showImages || searching;
+  const volumesOpen = showVolumes || searching;
 
   const dockerContext =
     instance.profile === "default" ? "colima" : `colima-${instance.profile}`;
@@ -125,17 +150,19 @@ export function InstanceCard({
   };
 
   useEffect(() => {
-    if (showContainers && isRunning) fetchContainers();
+    if (containersOpen && isRunning) fetchContainers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showContainers, isRunning, showStopped]);
+  }, [containersOpen, isRunning, showStopped]);
 
   useEffect(() => {
-    if (showImages && isRunning) fetchImages();
-  }, [showImages, isRunning]);
+    if (imagesOpen && isRunning) fetchImages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesOpen, isRunning]);
 
   useEffect(() => {
-    if (showVolumes && isRunning) fetchVolumes();
-  }, [showVolumes, isRunning]);
+    if (volumesOpen && isRunning) fetchVolumes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [volumesOpen, isRunning]);
 
   const handlePruneImages = async () => {
     setPruningImages(true);
@@ -201,13 +228,33 @@ export function InstanceCard({
     await pruneInstance(instance.profile);
   };
 
+  const visibleContainers = searching
+    ? containers.filter(
+        (c) =>
+          (c.names ?? "").toLowerCase().includes(query) ||
+          (c.image ?? "").toLowerCase().includes(query)
+      )
+    : containers;
+  const visibleImages = searching
+    ? images.filter(
+        (i) =>
+          `${i.repository}:${i.tag}`.toLowerCase().includes(query) ||
+          i.id.toLowerCase().includes(query)
+      )
+    : images;
+  const visibleVolumes = searching
+    ? volumes.filter((v) => v.name.toLowerCase().includes(query))
+    : volumes;
+
   return (
     <div
       className={cn(
-        "rounded-xl border overflow-hidden transition-all",
+        "rounded-card border overflow-hidden transition-all",
         isThisRunning
-          ? "border-blue-500/30 bg-blue-500/[0.06]"
-          : "border-border bg-white/[0.04]"
+          ? "border-blue-500/30 bg-blue-500/[0.06] ring-1 ring-blue-400/30"
+          : isRunning
+          ? "border-border bg-surface-raised"
+          : "border-border-subtle bg-surface"
       )}
     >
       {showPruneConfirm && (
@@ -222,112 +269,129 @@ export function InstanceCard({
       )}
 
       {/* Card body */}
-      <div className="px-4 pt-4 pb-3">
-        {/* Header row */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="font-semibold text-[15px] text-fg truncate">
-              {instance.profile}
-            </span>
-            <span className="text-xs text-fg-muted bg-white/[0.06] rounded-md px-2 py-0.5 font-mono">
-              {instance.runtime}
-            </span>
+      <div className="px-3 pt-3 pb-3">
+        {/* Header row: icon chip · name + specs · status · (stopped: inline controls) */}
+        <div className="flex items-center gap-2.5">
+          <div
+            className={cn(
+              "w-[34px] h-[34px] rounded-ctl flex items-center justify-center flex-shrink-0",
+              isRunning ? "bg-blue-500/[0.16] text-blue-300" : "bg-surface text-fg-faint"
+            )}
+          >
+            <Server size={17} />
           </div>
-          <StatusBadge status={instance.status} />
-        </div>
-
-        {/* Specs row */}
-        <div className="flex items-center gap-4 mb-4 text-xs text-fg-muted">
-          <span className="flex items-center gap-1.5">
-            <Cpu size={12} className="text-icon" />
-            {instance.cpus}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <MemoryStick size={12} className="text-icon" />
-            {instance.memory}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <HardDrive size={12} className="text-icon" />
-            {instance.disk}
-          </span>
-          <span className="text-fg-muted">{instance.arch}</span>
-          {instance.address && instance.address !== "—" && (
-            <span className="text-fg-muted font-mono">{instance.address}</span>
+          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className={cn(
+                  "font-semibold text-[15px] truncate",
+                  isRunning ? "text-fg" : "text-fg-secondary"
+                )}
+              >
+                {instance.profile}
+              </span>
+              <span className="text-[10px] text-fg-muted bg-surface rounded-chip px-1.5 py-0.5 font-mono flex-shrink-0">
+                {instance.runtime}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] text-fg-muted truncate">
+              <span className="flex items-center gap-1 flex-shrink-0">
+                <Cpu size={11} className="text-icon" />
+                {instance.cpus}
+              </span>
+              <span className="text-fg-faint">·</span>
+              <span className="flex items-center gap-1 flex-shrink-0">
+                <MemoryStick size={11} className="text-icon" />
+                {instance.memory}
+              </span>
+              <span className="text-fg-faint">·</span>
+              <span className="flex items-center gap-1 flex-shrink-0">
+                <HardDrive size={11} className="text-icon" />
+                {instance.disk}
+              </span>
+              <span className="text-fg-faint">·</span>
+              <span className="font-mono flex-shrink-0">{instance.arch}</span>
+              {isRunning && instance.address && instance.address !== "—" && (
+                <>
+                  <span className="text-fg-faint">·</span>
+                  <span className="font-mono truncate">{instance.address}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <StatusBadge status={instance.status} className="flex-shrink-0" />
+          {!isRunning && !showConfirmDelete && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Button
+                icon={<Play size={12} />}
+                tone="start"
+                onClick={() => onStart(instance.profile)}
+                disabled={isBusy}
+              >
+                Start
+              </Button>
+              <IconButton
+                icon={<FileText size={14} />}
+                onClick={() => onViewConfig(instance.profile)}
+                title="View config"
+              />
+              <IconButton
+                icon={<Trash2 size={14} />}
+                danger
+                onClick={() => setShowConfirmDelete(true)}
+                disabled={isBusy}
+                title="Delete instance"
+              />
+            </div>
           )}
         </div>
 
-        {/* Actions */}
-        {showConfirmDelete ? (
-          <div className="flex items-center gap-2">
+        {/* Delete confirm (stopped instances only) */}
+        {showConfirmDelete && (
+          <div className="flex items-center gap-2 mt-3">
             <span className="text-sm text-red-400/80 flex-1">
               Delete <span className="font-medium">{instance.profile}</span>?
             </span>
-            <button
-              onClick={() => setShowConfirmDelete(false)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] text-fg-muted hover:text-fg-secondary transition-all"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleDelete}
-              className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
-            >
+            <Button onClick={() => setShowConfirmDelete(false)}>Cancel</Button>
+            <Button tone="stop" onClick={handleDelete}>
               Delete
-            </button>
+            </Button>
           </div>
-        ) : (
-          <div className="flex items-center gap-2 flex-wrap">
-            {isRunning ? (
-              <>
-                <ActionBtn
-                  icon={<Square size={12} />}
-                  label="Stop"
-                  onClick={handleStop}
-                  disabled={isBusy}
-                  variant="stop"
-                />
-                <ActionBtn
-                  icon={<RotateCcw size={12} />}
-                  label="Restart"
-                  onClick={handleRestart}
-                  disabled={isBusy}
-                  variant="restart"
-                />
-              </>
-            ) : (
-              <ActionBtn
-                icon={<Play size={12} />}
-                label="Start"
-                onClick={() => onStart(instance.profile)}
-                disabled={isBusy}
-                variant="start"
-              />
-            )}
-            <ActionBtn
+        )}
+
+        {/* Actions (running instances) */}
+        {isRunning && !showConfirmDelete && (
+          <div className="flex items-center gap-2 flex-wrap mt-3">
+            <Button
+              icon={<Square size={12} />}
+              tone="stop"
+              onClick={handleStop}
+              disabled={isBusy}
+            >
+              Stop
+            </Button>
+            <Button
+              icon={<RotateCcw size={12} />}
+              tone="primary"
+              onClick={handleRestart}
+              disabled={isBusy}
+            >
+              Restart
+            </Button>
+            <Button
               icon={<FileText size={12} />}
-              label="Config"
               onClick={() => onViewConfig(instance.profile)}
-              disabled={false}
-              variant="default"
-            />
-            {isRunning && (
-              <ActionBtn
-                icon={<Scissors size={12} />}
-                label="Prune"
-                onClick={handlePrune}
-                disabled={isBusy}
-                variant="warn"
-              />
-            )}
-            <div className="flex-1" />
-            <ActionBtn
-              icon={<Trash2 size={12} />}
-              label=""
-              onClick={() => setShowConfirmDelete(true)}
-              disabled={isBusy || isRunning}
-              variant="danger"
-              title="Delete instance"
-            />
+            >
+              Config
+            </Button>
+            <Button
+              icon={<Scissors size={12} />}
+              tone="warn"
+              onClick={handlePrune}
+              disabled={isBusy}
+            >
+              Prune
+            </Button>
           </div>
         )}
 
@@ -346,23 +410,21 @@ export function InstanceCard({
       {isRunning && (
         <>
         <div className="border-t border-border-subtle">
-          <div className="flex items-center px-4 py-2.5">
+          <div className="flex items-center px-3 py-2.5">
             <button
               onClick={() => setShowContainers((v) => !v)}
               className="flex items-center gap-2 text-xs text-fg-muted hover:text-fg-secondary transition-all flex-1"
             >
-              {showContainers ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {containersOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               <span>Containers</span>
-              {containers.length > 0 && (
-                <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-xs text-fg-muted">
-                  {containers.length}
-                </span>
+              {visibleContainers.length > 0 && (
+                <CountPill>{visibleContainers.length}</CountPill>
               )}
             </button>
             <button
               onClick={() => setShowStopped((v) => !v)}
               className={cn(
-                "text-xs px-2 py-1 rounded-md transition-all",
+                "text-xs px-2.5 py-1 rounded-full transition-all",
                 showStopped
                   ? "bg-white/[0.08] text-fg-muted"
                   : "text-fg-faint hover:text-fg-muted"
@@ -372,10 +434,10 @@ export function InstanceCard({
             </button>
           </div>
 
-          {showContainers && (() => {
+          {containersOpen && (() => {
             const groups = new Map<string, DockerContainer[]>();
             const standalone: DockerContainer[] = [];
-            for (const c of containers) {
+            for (const c of visibleContainers) {
               if (c.composeProject) {
                 groups.set(c.composeProject, [...(groups.get(c.composeProject) ?? []), c]);
               } else {
@@ -384,12 +446,12 @@ export function InstanceCard({
             }
             const sortedGroups = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
             return (
-              <div className="px-4 pb-4 space-y-3">
+              <div className="px-3 pb-3 space-y-3 max-h-80 overflow-y-auto">
                 {containersLoading && containers.length === 0 ? (
                   <p className="text-xs text-fg-faint">Loading...</p>
-                ) : containers.length === 0 ? (
+                ) : visibleContainers.length === 0 ? (
                   <p className="text-xs text-fg-muted italic">
-                    {showStopped ? "No containers" : "No running containers"}
+                    {searching ? "No matches" : showStopped ? "No containers" : "No running containers"}
                   </p>
                 ) : (
                   <>
@@ -439,9 +501,12 @@ export function InstanceCard({
                   </>
                 )}
 
-                {/* Container resource stats */}
+                {/* Container resource stats — kept mounted while searching so
+                    the docker-stats poll cadence isn't reset by a remount */}
                 {containers.length > 0 && (
-                  <ContainerStatsPanel profile={instance.profile} />
+                  <div className={searching ? "hidden" : undefined}>
+                    <ContainerStatsPanel profile={instance.profile} />
+                  </div>
                 )}
               </div>
             );
@@ -450,17 +515,15 @@ export function InstanceCard({
 
         {/* Images accordion */}
         <div className="border-t border-border-subtle">
-          <div className="flex items-center px-4 py-2.5">
+          <div className="flex items-center px-3 py-2.5">
             <button
               onClick={() => setShowImages((v) => !v)}
               className="flex items-center gap-2 text-xs text-fg-muted hover:text-fg-secondary transition-all flex-1"
             >
-              {showImages ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {imagesOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               <span>Images</span>
-              {images.length > 0 && (
-                <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-xs text-fg-muted">
-                  {images.length}
-                </span>
+              {visibleImages.length > 0 && (
+                <CountPill>{visibleImages.length}</CountPill>
               )}
             </button>
             {showImages && images.some((i) => i.repository === "<none>" || i.tag === "<none>") && (
@@ -475,8 +538,8 @@ export function InstanceCard({
             )}
           </div>
 
-          {showImages && (
-            <div className="px-4 pb-4 space-y-3">
+          {imagesOpen && (
+            <div className="px-3 pb-3 space-y-3 max-h-80 overflow-y-auto">
               <ImagePull
                 profile={instance.profile}
                 onPulled={fetchImages}
@@ -484,10 +547,10 @@ export function InstanceCard({
               />
               {imagesLoading && images.length === 0 ? (
                 <p className="text-xs text-fg-faint">Loading...</p>
-              ) : images.length === 0 ? (
-                <p className="text-xs text-fg-muted italic">No images</p>
+              ) : visibleImages.length === 0 ? (
+                <p className="text-xs text-fg-muted italic">{searching ? "No matches" : "No images"}</p>
               ) : (
-                images.map((img) => (
+                visibleImages.map((img) => (
                   <ImageRow
                     key={img.id}
                     image={img}
@@ -502,17 +565,15 @@ export function InstanceCard({
 
         {/* Volumes accordion */}
         <div className="border-t border-border-subtle">
-          <div className="flex items-center px-4 py-2.5">
+          <div className="flex items-center px-3 py-2.5">
             <button
               onClick={() => setShowVolumes((v) => !v)}
               className="flex items-center gap-2 text-xs text-fg-muted hover:text-fg-secondary transition-all flex-1"
             >
-              {showVolumes ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {volumesOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               <span>Volumes</span>
-              {volumes.length > 0 && (
-                <span className="rounded-full bg-white/[0.08] px-2 py-0.5 text-xs text-fg-muted">
-                  {volumes.length}
-                </span>
+              {visibleVolumes.length > 0 && (
+                <CountPill>{visibleVolumes.length}</CountPill>
               )}
             </button>
             {showVolumes && volumes.length > 0 && (
@@ -527,14 +588,14 @@ export function InstanceCard({
             )}
           </div>
 
-          {showVolumes && (
-            <div className="px-4 pb-4 space-y-3">
+          {volumesOpen && (
+            <div className="px-3 pb-3 space-y-3 max-h-80 overflow-y-auto">
               {volumesLoading && volumes.length === 0 ? (
                 <p className="text-xs text-fg-faint">Loading...</p>
-              ) : volumes.length === 0 ? (
-                <p className="text-xs text-fg-muted italic">No volumes</p>
+              ) : visibleVolumes.length === 0 ? (
+                <p className="text-xs text-fg-muted italic">{searching ? "No matches" : "No volumes"}</p>
               ) : (
-                volumes.map((vol) => (
+                visibleVolumes.map((vol) => (
                   <VolumeRow
                     key={vol.name}
                     volume={vol}
@@ -549,39 +610,5 @@ export function InstanceCard({
         </>
       )}
     </div>
-  );
-}
-
-type ActionVariant = "start" | "stop" | "restart" | "warn" | "default" | "danger";
-
-interface ActionBtnProps {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-  disabled: boolean;
-  variant: ActionVariant;
-  title?: string;
-}
-
-function ActionBtn({ icon, label, onClick, disabled, variant, title }: ActionBtnProps) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
-        "disabled:opacity-35 disabled:cursor-not-allowed",
-        variant === "start" && "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25",
-        variant === "stop" && "bg-red-500/15 text-red-400 hover:bg-red-500/25",
-        variant === "restart" && "bg-blue-500/15 text-blue-400 hover:bg-blue-500/25",
-        variant === "warn" && "bg-amber-500/12 text-amber-400 hover:bg-amber-500/20",
-        variant === "default" && "bg-white/[0.06] text-fg-muted hover:bg-white/[0.1] hover:text-fg-secondary",
-        variant === "danger" && "bg-transparent text-fg-faint hover:bg-red-500/15 hover:text-red-400"
-      )}
-    >
-      {icon}
-      {label && <span>{label}</span>}
-    </button>
   );
 }
