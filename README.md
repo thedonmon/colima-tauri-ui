@@ -10,7 +10,18 @@
 
 ---
 
-![Colima Manager](docs/screenshot.png)
+![Colima Manager](docs/overview.png)
+
+<table>
+  <tr>
+    <td><img src="docs/vms.png" alt="VM management with live sparkline charts" /></td>
+    <td><img src="docs/docker.png" alt="Docker Desktop contexts" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/ai.png" alt="AI models via Docker Model Runner" /></td>
+    <td><img src="docs/settings.png" alt="Settings and default VM presets" /></td>
+  </tr>
+</table>
 
 ---
 
