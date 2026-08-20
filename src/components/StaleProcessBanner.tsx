@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/tauri";
 import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useColimaStore } from "../store";

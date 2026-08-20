@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/tauri";
 import { Trash2, Database } from "lucide-react";
 import type { DockerVolume } from "../types";
 

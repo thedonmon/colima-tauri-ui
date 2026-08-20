@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/tauri";
 import { useAdaptivePoll } from "../lib/usePolling";
 import type { ContainerStats } from "../types";
 

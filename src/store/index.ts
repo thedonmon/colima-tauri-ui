@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/tauri";
 import type { ColimaInstance, StartOptions, LogLine, DockerContext } from "../types";
 
 interface ColimaStore {

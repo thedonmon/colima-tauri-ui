@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/tauri";
 import {
   Cpu,
   HardDrive,
@@ -26,6 +26,7 @@ import { VmStatsBar } from "./VmStatsBar";
 import { ContainerStatsPanel } from "./ContainerStatsRow";
 import { ImagePull } from "./ImagePull";
 import { Button, IconButton } from "./ui/Button";
+import { DEMO_MODE } from "../lib/demo";
 import { CountPill } from "./ui/Badge";
 import { cn } from "../lib/utils";
 import type { ColimaInstance, DockerContainer, DockerImage, DockerVolume, ContainerLogsTarget } from "../types";
@@ -68,7 +69,8 @@ export function InstanceCard({
 
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [showPruneConfirm, setShowPruneConfirm] = useState(false);
-  const [showContainers, setShowContainers] = useState(false);
+  // Demo mode opens the containers section so screenshots show populated cards.
+  const [showContainers, setShowContainers] = useState(DEMO_MODE);
   const [showStopped, setShowStopped] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [containers, setContainers] = useState<DockerContainer[]>([]);

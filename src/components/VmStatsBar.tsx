@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/tauri";
 import { HardDrive } from "lucide-react";
 import { useAdaptivePoll } from "../lib/usePolling";
 import { Sparkline } from "./ui/Sparkline";

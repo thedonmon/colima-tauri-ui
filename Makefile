@@ -1,4 +1,4 @@
-.PHONY: release release-patch release-minor release-major dev build
+.PHONY: release release-patch release-minor release-major dev build demo
 
 # ──────────────────────────────────────────────────────────────
 # Usage:
@@ -44,6 +44,10 @@ endif
 
 dev:
 	npm run tauri dev
+
+# Mock-data mode for screenshots — never touches real colima/docker
+demo:
+	VITE_DEMO=1 npm run tauri dev
 
 build:
 	npm run tauri build

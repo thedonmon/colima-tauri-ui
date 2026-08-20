@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/tauri";
 import { Play, Square, RotateCcw, Pause, Play as Resume, ScrollText, Trash2, Terminal, Search } from "lucide-react";
 import { Button } from "./ui/Button";
 import { cn } from "../lib/utils";

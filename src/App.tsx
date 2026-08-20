@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./lib/tauri";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Plus } from "lucide-react";
 

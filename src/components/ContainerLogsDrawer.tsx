@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { ChevronDown, Search, X } from "lucide-react";
 import AnsiToHtml from "ansi-to-html";
